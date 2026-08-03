@@ -2,36 +2,42 @@
 
 ## Estado atual do projeto
 
-O projeto avançou para a segunda camada arquitetural com sucesso. A base inicial do FastAPI foi criada, o domínio da conversa foi modelado e um Conversation Engine inicial já está implementado e validado com testes.
+O projeto já possui uma base arquitetural funcional em FastAPI, com módulos separados para domínio, aplicação, infraestrutura e API. O fluxo conversacional está orquestrado, o agendamento já é tratado por uma camada de aplicação e a estrutura de persistência com PostgreSQL foi iniciada.
 
 ## O que já foi implementado
 
 - Estrutura inicial do backend em FastAPI.
-- Endpoints de saúde e aplicação base.
-- Modelo de domínio para estado da conversa.
-- Máquina de estados para evolução do fluxo.
-- Conversation Engine com respostas iniciais, acolhimento e tratamento de emergência.
-- Testes unitários cobrindo saúde, estado da conversa e engine de conversa.
+- Endpoints de saúde e conversação.
+- Domínio para conversa, estado, clínica, paciente e agendamento.
+- Máquina de estados para o fluxo principal.
+- Conversation Engine com respostas iniciais e acolhimento.
+- Decision Engine para detectar emergência e intenção de agendamento.
+- Orquestrador de conversação integrado ao fluxo.
+- Action Engine inicial para agendamento.
+- Repositório inicial para persistência com PostgreSQL.
+- Configuração por ambiente e suporte a containers.
+- Testes automatizados cobrindo as principais camadas.
 
 ## Arquitetura atual
 
 O projeto segue a direção proposta pelo produto:
 
 - Conversation Engine: responsável por gerar respostas humanas e orientadas ao objetivo do atendimento.
-- Decision Engine: ainda precisa ser implementado como próxima evolução.
-- Action Engine: ainda precisa ser implementado para integrações e agendamentos.
+- Decision Engine: responsável por decidir o próximo passo a partir do contexto.
+- Action Engine: responsável por executar ações, como agendamento e integrações futuras.
 
 ## Próximo passo recomendado
 
-1. Implementar o Decision Engine para decidir qual etapa seguir com base no estado e no contexto.
-2. Criar um fluxo principal de atendimento com etapas claras: greeting, discover_reason, discover_symptoms, confirm_appointment, collect_information, check_calendar e book_appointment.
-3. Introduzir abstrações para ações futuras, como calendário, mensagens e persistência.
-4. Evoluir para um modelo de integração com PostgreSQL e serviços externos.
+1. Integrar a persistência real com PostgreSQL e criar o esquema inicial de tabelas.
+2. Conectar o fluxo de agendamento à persistência, armazenando conversas, agendamentos e contexto.
+3. Implementar a camada de integração com Google Calendar e notificações.
+4. Evoluir para um modelo de configuração administrativa e fluxos configuráveis.
+5. Preparar o sistema para memória persistente, logs e observabilidade.
 
 ## Diretrizes para as próximas IAs
 
 - Nunca reescrever o projeto sem revisar o estado atual do repositório.
-- Sempre preservar a arquitetura modular e os testes existentes.
+- Sempre preservar a arquitetura modular e o conjunto de testes.
 - Não implementar regras de negócio diretamente no endpoint; elas devem entrar em camadas de aplicação ou domínio.
 - Manter foco em experiência humana, contexto, memória e condução ao agendamento.
 - Evitar lógica hardcoded para especialidades, clínicas ou fluxos específicos sem um modelo de configuração.
@@ -46,4 +52,4 @@ O projeto segue a direção proposta pelo produto:
 
 ## Mensagem final para a próxima IA
 
-Continue evoluindo o projeto de forma incremental, respeitando o que já foi implementado e ampliando a arquitetura para o Decision Engine e o Action Engine. O foco agora é transformar o fluxo conversacional em uma jornada mais completa, com decisões claras e ações reais.
+Continue evoluindo o projeto de forma incremental, respeitando o que já foi implementado e avançando para a persistência real e as integrações externas. O foco agora é transformar o fluxo conversacional em uma jornada operacional, com armazenamento confiável e execução concreta de agendamentos.
