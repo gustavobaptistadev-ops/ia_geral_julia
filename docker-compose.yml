@@ -1,0 +1,32 @@
+services:
+  api:
+    build: .
+    container_name: lifelineone-api
+    ports:
+      - "8000:8000"
+    environment:
+      APP_NAME: LifelineOne IA
+      APP_VERSION: 0.1.0
+      ENVIRONMENT: development
+      DEBUG: "true"
+      POSTGRES_URL: postgresql://postgres:postgres@postgres:5432/lifelineone
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - postgres
+      - redis
+
+  postgres:
+    image: postgres:16
+    container_name: lifelineone-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: lifelineone
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7
+    container_name: lifelineone-redis
+    ports:
+      - "6379:6379"
