@@ -1,53 +1,49 @@
 # Handoff para o próximo agente de IA
 
-## Contexto do projeto
+## Estado atual do projeto
 
-Este workspace está vazio no momento, o que indica que ainda não existe uma implementação real do projeto LifelineOne IA. O objetivo aqui é não recriar o projeto do zero, mas construir a implementação de forma incremental a partir de uma arquitetura bem definida.
+O projeto avançou para a segunda camada arquitetural com sucesso. A base inicial do FastAPI foi criada, o domínio da conversa foi modelado e um Conversation Engine inicial já está implementado e validado com testes.
 
-## O que já foi definido
+## O que já foi implementado
 
-- O produto é uma plataforma SaaS de atendimento humanizado via WhatsApp.
-- A arquitetura deve seguir três motores: Conversation Engine, Decision Engine e Action Engine.
-- O foco principal é conduzir o paciente até o agendamento.
-- A solução deve ser modular, escalável, segura e pronta para produção.
-- O projeto deve evoluir com base em configuração administrativa e não em regras fixas no código.
+- Estrutura inicial do backend em FastAPI.
+- Endpoints de saúde e aplicação base.
+- Modelo de domínio para estado da conversa.
+- Máquina de estados para evolução do fluxo.
+- Conversation Engine com respostas iniciais, acolhimento e tratamento de emergência.
+- Testes unitários cobrindo saúde, estado da conversa e engine de conversa.
 
-## O que precisa ser feito primeiro
+## Arquitetura atual
 
-1. Confirmar se há um projeto existente no workspace.
-2. Se não houver, iniciar a implementação a partir de uma base arquitetural limpa.
-3. Criar a estrutura inicial do backend em Python com FastAPI.
-4. Definir os domínios de conversa, estado, memória e agendamento.
-5. Implementar os primeiros testes antes de expandir funcionalidades.
+O projeto segue a direção proposta pelo produto:
 
-## Diretrizes obrigatórias
+- Conversation Engine: responsável por gerar respostas humanas e orientadas ao objetivo do atendimento.
+- Decision Engine: ainda precisa ser implementado como próxima evolução.
+- Action Engine: ainda precisa ser implementado para integrações e agendamentos.
 
-- Nunca reescrever o projeto sem verificar o estado real do workspace.
-- Nunca criar soluções rápidas que comprometam a arquitetura.
-- Sempre manter separação entre domínio, aplicação, infraestrutura e interfaces.
-- Sempre priorizar testes, segurança, observabilidade e extensibilidade.
-- Nunca implementar regras específicas no código quando a intenção for configurável pelo painel.
+## Próximo passo recomendado
 
-## Ordem de trabalho recomendada
+1. Implementar o Decision Engine para decidir qual etapa seguir com base no estado e no contexto.
+2. Criar um fluxo principal de atendimento com etapas claras: greeting, discover_reason, discover_symptoms, confirm_appointment, collect_information, check_calendar e book_appointment.
+3. Introduzir abstrações para ações futuras, como calendário, mensagens e persistência.
+4. Evoluir para um modelo de integração com PostgreSQL e serviços externos.
 
-1. Estruturar o backend com FastAPI.
-2. Definir modelos de domínio para conversa, paciente, clínica e agendamento.
-3. Implementar persistência com PostgreSQL.
-4. Criar o estado da conversa e a máquina de estados.
-5. Implementar o Conversation Engine com resposta natural e contexto.
-6. Implementar o Decision Engine com base no estado atual.
-7. Implementar o Action Engine para agendamento e integrações.
-8. Adicionar testes unitários e de integração.
-9. Evoluir para painel administrativo e configurações dinâmicas.
+## Diretrizes para as próximas IAs
 
-## Pontos de atenção
+- Nunca reescrever o projeto sem revisar o estado atual do repositório.
+- Sempre preservar a arquitetura modular e os testes existentes.
+- Não implementar regras de negócio diretamente no endpoint; elas devem entrar em camadas de aplicação ou domínio.
+- Manter foco em experiência humana, contexto, memória e condução ao agendamento.
+- Evitar lógica hardcoded para especialidades, clínicas ou fluxos específicos sem um modelo de configuração.
+- Continuar com desenvolvimento incremental, com testes para cada nova etapa.
 
-- O sistema deve parecer humano e não como um formulário.
+## Pontos de atenção permanentes
+
+- O atendimento nunca deve parecer formulário ou chatbot.
 - A IA nunca deve emitir diagnóstico ou tratamento.
-- O fluxo principal sempre deve conduzir ao agendamento.
-- A memória precisa ser permanente e confirmada por identidade.
-- O agendamento deve usar disponibilidade real do Google Calendar.
+- A conversa deve sempre responder primeiro e conduzir ao agendamento.
+- Emergências devem interromper o fluxo automaticamente e priorizar apoio humano.
 
-## Mensagem final para o próximo agente
+## Mensagem final para a próxima IA
 
-Continue o projeto de forma incremental, respeitando a arquitetura proposta e sem atropelar a evolução. O foco inicial deve ser a base estrutural e o fluxo principal de conversa, não a implementação completa do painel administrativo.
+Continue evoluindo o projeto de forma incremental, respeitando o que já foi implementado e ampliando a arquitetura para o Decision Engine e o Action Engine. O foco agora é transformar o fluxo conversacional em uma jornada mais completa, com decisões claras e ações reais.
