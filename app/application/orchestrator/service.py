@@ -126,34 +126,54 @@ class ConversationOrchestrator:
                     conversation_id=state.conversation_id,
                 )
 
-            selected_slot = self.state_machine.select_slot(message, context.get("available_slots", []))
-            if selected_slot is None:
-                candidates = self.state_machine.slot_candidates(message, context.get("available_slots", []))
-                if len(candidates) > 1:
-                    return ConversationState(
-                        current_step=ConversationStep.CHECK_CALENDAR,
-                        status=state.status,
-                        context=self._calendar_context(
-                            context,
-                            available_slots=context.get("available_slots", []),
-                            pending_slot_confirmation=candidates[0],
-                            slot_clarification_options=candidates,
-                            slot_confirmation_required=True,
-                        ),
-                        conversation_id=state.conversation_id,
-                    )
+            available_slots = context.get("available_slots", [])
+            scoped_slots = context.get("slot_clarification_options") if pending_slot else None
+            selection = self.state_machine.interpret_slot_message(message, available_slots, scoped_slots)
+            if selection.intent == "slot_selected" and selection.selected_slot is not None:
+                return ConversationState(
+                    current_step=ConversationStep.BOOK_APPOINTMENT,
+                    status=ConversationStatus.APPOINTMENT_BOOKED,
+                    context=self._booking_context(context, selection.selected_slot),
+                    conversation_id=state.conversation_id,
+                )
 
+            if selection.intent == "slot_needs_confirmation" and selection.candidates:
                 return ConversationState(
                     current_step=ConversationStep.CHECK_CALENDAR,
                     status=state.status,
-                    context={**context, "calendar_selection_error": True},
+                    context=self._calendar_context(
+                        context,
+                        available_slots=context.get("available_slots", []),
+                        pending_slot_confirmation=selection.candidates[0],
+                        slot_clarification_options=selection.candidates,
+                        slot_confirmation_required=True,
+                    ),
+                    conversation_id=state.conversation_id,
+                )
+
+            if selection.intent == "slot_unavailable":
+                return ConversationState(
+                    current_step=ConversationStep.CHECK_CALENDAR,
+                    status=state.status,
+                    context=self._calendar_context(
+                        context,
+                        available_slots=selection.candidates or context.get("available_slots", []),
+                        calendar_slot_unavailable=True,
+                        requested_hour=selection.requested_hour,
+                        requested_weekday=selection.requested_weekday,
+                        requested_period=selection.requested_period,
+                    ),
                     conversation_id=state.conversation_id,
                 )
 
             return ConversationState(
-                current_step=ConversationStep.BOOK_APPOINTMENT,
-                status=ConversationStatus.APPOINTMENT_BOOKED,
-                context=self._booking_context(context, selected_slot),
+                current_step=ConversationStep.CHECK_CALENDAR,
+                status=state.status,
+                context=self._calendar_context(
+                    context,
+                    available_slots=context.get("available_slots", []),
+                    calendar_selection_error=True,
+                ),
                 conversation_id=state.conversation_id,
             )
 
@@ -211,6 +231,10 @@ class ConversationOrchestrator:
                 "slot_clarification_options",
                 "slot_confirmation_required",
                 "slot_confirmation_declined",
+                "calendar_slot_unavailable",
+                "requested_hour",
+                "requested_weekday",
+                "requested_period",
             }
         }
         return {**next_context, **updates}

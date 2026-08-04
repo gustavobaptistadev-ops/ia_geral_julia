@@ -1,7 +1,19 @@
 from __future__ import annotations
 
+import re
+from dataclasses import dataclass
 from datetime import datetime
 from unicodedata import combining, normalize
+
+
+@dataclass(slots=True)
+class AgendaSelectionResult:
+    intent: str
+    selected_slot: str | None = None
+    candidates: list[str] | None = None
+    requested_hour: int | None = None
+    requested_weekday: str | None = None
+    requested_period: str | None = None
 
 
 class AgendaAgent:
@@ -14,33 +26,86 @@ class AgendaAgent:
         return self.order_slots(slots)
 
     def select_slot(self, message: str, slots: object) -> str | None:
+        result = self.interpret_selection(message, slots)
+        if result.intent == "slot_selected":
+            return result.selected_slot
+        return None
+
+    def interpret_selection(self, message: str, slots: object, scoped_slots: object | None = None) -> AgendaSelectionResult:
         ordered_slots = self.order_slots(slots)
+        scoped_ordered_slots = self.order_slots(scoped_slots) if scoped_slots is not None else ordered_slots
         if not ordered_slots:
-            return None
+            return AgendaSelectionResult(intent="no_slots", candidates=[])
 
         normalized = self._normalize(message)
+        requested_hour = self._requested_hour(normalized)
+        requested_weekday = self._requested_weekday(normalized)
+        requested_period = self._requested_period(normalized)
+        contextual_weekday = requested_weekday or self._common_weekday(scoped_ordered_slots)
 
         for slot in ordered_slots:
             if slot in message:
-                return slot
-
-        candidates = self.slot_candidates(message, ordered_slots)
-        if len(candidates) == 1:
-            return candidates[0]
-
-        requested_hour = self._requested_hour(normalized)
-        if requested_hour is not None:
-            for slot in ordered_slots:
-                if self._slot_datetime(slot).hour == requested_hour:
-                    return slot
+                return AgendaSelectionResult(
+                    intent="slot_selected",
+                    selected_slot=slot,
+                    candidates=[slot],
+                    requested_hour=requested_hour,
+                    requested_weekday=requested_weekday,
+                    requested_period=requested_period,
+                )
 
         if normalized in {"1", "primeiro", "primeira"}:
-            return ordered_slots[0]
-        if normalized in {"2", "segundo"} and len(ordered_slots) > 1:
-            return ordered_slots[1]
-        if normalized in {"3", "terceiro", "terceira"} and len(ordered_slots) > 2:
-            return ordered_slots[2]
-        return None
+            return self._numbered_selection(ordered_slots, 0)
+        if normalized in {"2", "segundo"}:
+            return self._numbered_selection(ordered_slots, 1)
+        if normalized in {"3", "terceiro", "terceira"}:
+            return self._numbered_selection(ordered_slots, 2)
+
+        candidates = self.slot_candidates(message, scoped_ordered_slots)
+        if len(candidates) == 1:
+            return AgendaSelectionResult(
+                intent="slot_selected",
+                selected_slot=candidates[0],
+                candidates=candidates,
+                requested_hour=requested_hour,
+                requested_weekday=requested_weekday,
+                requested_period=requested_period,
+            )
+
+        if len(candidates) > 1:
+            return AgendaSelectionResult(
+                intent="slot_needs_confirmation",
+                candidates=candidates,
+                requested_hour=requested_hour,
+                requested_weekday=requested_weekday,
+                requested_period=requested_period,
+            )
+
+        if requested_hour is not None:
+            return AgendaSelectionResult(
+                intent="slot_unavailable",
+                candidates=scoped_ordered_slots,
+                requested_hour=requested_hour,
+                requested_weekday=contextual_weekday,
+                requested_period=requested_period,
+            )
+
+        if requested_weekday is not None or requested_period is not None:
+            return AgendaSelectionResult(
+                intent="slot_unavailable",
+                candidates=scoped_ordered_slots,
+                requested_hour=requested_hour,
+                requested_weekday=contextual_weekday,
+                requested_period=requested_period,
+            )
+
+        return AgendaSelectionResult(
+            intent="unknown",
+            candidates=[],
+            requested_hour=requested_hour,
+            requested_weekday=requested_weekday,
+            requested_period=requested_period,
+        )
 
     def slot_candidates(self, message: str, slots: object) -> list[str]:
         ordered_slots = self.order_slots(slots)
@@ -102,9 +167,28 @@ class AgendaAgent:
 
     def _requested_hour(self, message: str) -> int | None:
         for hour in range(24):
-            if f"{hour}h" in message or f"{hour}:00" in message:
+            if re.search(rf"\b{hour}\s*h\b", message):
+                return hour
+            if re.search(rf"\b{hour}:00\b", message):
+                return hour
+            if re.search(rf"\b{hour}\s*horas?\b", message):
                 return hour
         return None
+
+    def _common_weekday(self, slots: list[str]) -> str | None:
+        weekdays = {self._weekday_name(slot) for slot in slots}
+        if len(weekdays) == 1:
+            return next(iter(weekdays))
+        return None
+
+    def _numbered_selection(self, ordered_slots: list[str], index: int) -> AgendaSelectionResult:
+        if len(ordered_slots) > index:
+            return AgendaSelectionResult(
+                intent="slot_selected",
+                selected_slot=ordered_slots[index],
+                candidates=[ordered_slots[index]],
+            )
+        return AgendaSelectionResult(intent="unknown", candidates=[])
 
     def _normalize(self, message: str) -> str:
         return "".join(

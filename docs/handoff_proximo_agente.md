@@ -15,6 +15,9 @@ Projeto FastAPI da LifelineOne IA com foco na atendente Julia. A estrutura esta 
 - `ResponseAgent` como fachada de resposta.
 - `VoiceAgent` para centralizar tom de voz, mensagens por etapa e formatacao de horarios.
 - `AgendaAgent` para horarios, ordenacao e interpretacao natural de escolhas como "segunda", "de tarde" e "pode ser este mesmo".
+- Interpretacao estruturada de agenda com `AgendaSelectionResult`, diferenciando horario selecionado, horario ambiguo, horario indisponivel e ausencia de opcoes.
+- Perguntas como "tem as 15 horas?" agora sao tratadas como consulta de disponibilidade; se o horario nao existir, Julia informa que nao encontrou e reoferece os horarios disponiveis.
+- Quando existe contexto pendente de dia, por exemplo apos o paciente dizer "segunda", uma pergunta como "tem as 15 horas?" e entendida como "segunda as 15h".
 - `PatientAgent` para extrair nome, telefone e campos pendentes.
 - `AdministrativeAgent` para pedidos de exame, encaminhando para Laboratorio Life.
 - `AppointmentBookingAgent` para criar consulta, gerar evento e persistir agendamento.
@@ -49,7 +52,7 @@ D:\GUSTAVO\NOVOS PROJETOS\ia\reports\ia_simulation_report.md
 
 ## Ultima validacao
 
-- Suite completa: `123 passed, 30 warnings`.
+- Suite completa: `127 passed, 30 warnings`.
 - Simulador: `6/6 cenarios sem achados`.
 
 ## Arquitetura atual recomendada
@@ -59,7 +62,7 @@ D:\GUSTAVO\NOVOS PROJETOS\ia\reports\ia_simulation_report.md
 - `DecisionEngine`: decide a proxima etapa.
 - `VoiceAgent`: define como Julia fala.
 - `ResponseAgent`: monta payload de resposta usando o VoiceAgent.
-- `AgendaAgent`: interpreta e organiza horarios.
+- `AgendaAgent`: interpreta e organiza horarios, inclusive perguntas de disponibilidade por hora/dia/periodo.
 - `PatientAgent`: extrai dados do paciente.
 - `AdministrativeAgent`: trata pedidos fora da consulta, como exames.
 - `AppointmentBookingAgent`: confirma e persiste consulta.
@@ -68,11 +71,12 @@ D:\GUSTAVO\NOVOS PROJETOS\ia\reports\ia_simulation_report.md
 ## Proximos passos recomendados
 
 1. Evoluir o `VoiceAgent` com frases mais humanas por etapa, mantendo testes exatos para cada ajuste aprovado.
-2. Criar ou fortalecer um `ContextAgent` para separar fatos confirmados, fatos inferidos, campos pendentes e nivel de confianca.
-3. Criar um `ClinicalTriageAgent` para concentrar regras de gravidade, tempo prolongado, piora e sinais de alerta.
-4. Adicionar um `HumanizationAgent` simples para revisar a resposta final antes de enviar, removendo repeticoes e melhorando naturalidade.
-5. Melhorar o simulador para exibir quais fatos foram usados na decisao da proxima pergunta.
-6. Depois de aprovar o tom, atualizar as mensagens para portugues com acentuacao correta de forma consistente.
+2. Fortalecer o `AgendaAgent` para sugerir automaticamente o horario mais proximo quando o horario pedido nao estiver disponivel.
+3. Criar ou fortalecer um `ContextAgent` para separar fatos confirmados, fatos inferidos, campos pendentes e nivel de confianca.
+4. Criar um `ClinicalTriageAgent` para concentrar regras de gravidade, tempo prolongado, piora e sinais de alerta.
+5. Adicionar um `HumanizationAgent` simples para revisar a resposta final antes de enviar, removendo repeticoes e melhorando naturalidade.
+6. Melhorar o simulador para exibir quais fatos foram usados na decisao da proxima pergunta.
+7. Depois de aprovar o tom, atualizar as mensagens para portugues com acentuacao correta de forma consistente.
 
 ## Cuidados permanentes
 

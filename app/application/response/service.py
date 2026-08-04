@@ -94,6 +94,18 @@ class ResponseAgent:
                 "should_handoff": False,
             }
 
+        if state.context.get("calendar_slot_unavailable"):
+            return {
+                "message": self.voice_agent.calendar_slot_unavailable(
+                    state.context.get("requested_hour"),
+                    state.context.get("requested_weekday"),
+                    state.context.get("requested_period"),
+                    slots,
+                ),
+                "next_step": ConversationStep.CHECK_CALENDAR,
+                "should_handoff": False,
+            }
+
         if state.context.get("calendar_selection_error"):
             return {
                 "message": self.voice_agent.calendar_selection_error(slots),

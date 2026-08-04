@@ -371,6 +371,24 @@ def test_orchestrator_reoffers_day_slots_after_negative_confirmation() -> None:
     assert "terca-feira" not in result["reply"]["message"]
 
 
+def test_orchestrator_answers_unavailable_hour_question_in_pending_day_context() -> None:
+    orchestrator = ConversationOrchestrator()
+
+    first = orchestrator.handle_message("coceira tem 3 dias e incomoda muito", None, conversation_id="conv-1")
+    second = orchestrator.handle_message("sim", first["state"], conversation_id="conv-1")
+    third = orchestrator.handle_message("Ana Silva 11999999999", second["state"], conversation_id="conv-1")
+    fourth = orchestrator.handle_message("segunda", third["state"], conversation_id="conv-1")
+    result = orchestrator.handle_message("tem as 15 horas?", fourth["state"], conversation_id="conv-1")
+
+    assert result["reply"]["next_step"] == "check_calendar"
+    assert "Na segunda-feira as 15h eu nao encontrei disponivel" in result["reply"]["message"]
+    assert "segunda-feira as 9h ou segunda-feira as 14h" in result["reply"]["message"]
+    assert result["state"].context["calendar_slot_unavailable"] is True
+    assert result["state"].context["requested_hour"] == 15
+    assert result["state"].context["requested_weekday"] == "segunda"
+    assert "appointment" not in result["state"].context
+
+
 def test_orchestrator_keeps_appointment_finished_after_patient_acknowledges() -> None:
     orchestrator = ConversationOrchestrator()
 

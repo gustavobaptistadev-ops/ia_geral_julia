@@ -43,3 +43,15 @@ def test_voice_agent_formats_booking_confirmation() -> None:
 
     assert "Horario: segunda-feira, 10/08/2026 as 14h" in message
     assert "Endereco: Clinica LifelineOne" in message
+
+
+def test_voice_agent_formats_unavailable_hour_with_alternatives() -> None:
+    message = VoiceAgent().calendar_slot_unavailable(
+        15,
+        "segunda",
+        None,
+        ["2026-08-10 09:00", "2026-08-10 14:00"],
+    )
+
+    assert message.startswith("Na segunda-feira as 15h eu nao encontrei disponivel")
+    assert "Tenho vaga segunda-feira as 9h ou segunda-feira as 14h" in message

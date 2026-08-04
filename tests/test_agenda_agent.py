@@ -37,3 +37,25 @@ def test_agenda_agent_selects_single_weekday_option() -> None:
     selected = agent.select_slot("terca", agent.default_available_slots())
 
     assert selected == "2026-08-11 10:00"
+
+
+def test_agenda_agent_detects_unavailable_requested_hour() -> None:
+    agent = AgendaAgent()
+
+    result = agent.interpret_selection("tem as 15 horas?", agent.default_available_slots())
+
+    assert result.intent == "slot_unavailable"
+    assert result.requested_hour == 15
+    assert result.candidates == agent.default_available_slots()
+
+
+def test_agenda_agent_uses_scoped_weekday_for_hour_question() -> None:
+    agent = AgendaAgent()
+    monday_slots = ["2026-08-10 09:00", "2026-08-10 14:00"]
+
+    result = agent.interpret_selection("tem as 15 horas?", agent.default_available_slots(), monday_slots)
+
+    assert result.intent == "slot_unavailable"
+    assert result.requested_hour == 15
+    assert result.requested_weekday == "segunda"
+    assert result.candidates == monday_slots

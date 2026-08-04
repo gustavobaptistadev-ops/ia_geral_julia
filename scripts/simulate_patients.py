@@ -90,17 +90,17 @@ SCENARIOS = [
     ),
     Scenario(
         name="Horario ambiguo",
-        goal="Validar se Julia nao confirma automaticamente quando ha mais de um horario no mesmo dia.",
+        goal="Validar se Julia nao confirma automaticamente quando ha mais de um horario no mesmo dia e entende pergunta por hora indisponivel.",
         messages=[
             "alergia tem 3 dias e esta incomodando muito",
             "sim",
             "Maria Oliveira 11988887777",
             "segunda",
-            "nao",
+            "tem as 15 horas?",
             "segunda de tarde",
         ],
         expected_final_steps={"book_appointment"},
-        must_contain=["Tenho mais de um horario nesse dia", "Sem problema"],
+        must_contain=["Tenho mais de um horario nesse dia", "Na segunda-feira as 15h eu nao encontrei disponivel"],
     ),
     Scenario(
         name="Exame",

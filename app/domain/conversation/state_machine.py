@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.application.agenda import AgendaAgent
+from app.application.agenda.service import AgendaSelectionResult
 from app.domain.conversation.models import (
     ConversationState,
     ConversationStatus,
@@ -129,6 +130,14 @@ class ConversationStateMachine:
 
     def slot_candidates(self, message: str, slots: object) -> list[str]:
         return self.agenda_agent.slot_candidates(message, slots)
+
+    def interpret_slot_message(
+        self,
+        message: str,
+        slots: object,
+        scoped_slots: object | None = None,
+    ) -> AgendaSelectionResult:
+        return self.agenda_agent.interpret_selection(message, slots, scoped_slots)
 
     def _append_message(self, context: dict[str, object], message: str) -> dict[str, object]:
         messages = list(context.get("messages", []))

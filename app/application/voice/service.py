@@ -95,6 +95,19 @@ class VoiceAgent:
     def calendar_slot_declined(self, slots: list[object]) -> str:
         return f"Sem problema. {self.format_slots(slots)}"
 
+    def calendar_slot_unavailable(
+        self,
+        requested_hour: object,
+        requested_weekday: object,
+        requested_period: object,
+        slots: list[object],
+    ) -> str:
+        requested = self._requested_slot_label(requested_hour, requested_weekday, requested_period)
+        if not slots:
+            return f"{requested} eu nao encontrei disponivel por agora. Posso deixar para apoio humano verificar a agenda?"
+
+        return f"{requested} eu nao encontrei disponivel por agora. {self.format_slots(slots)}"
+
     def calendar_selection_error(self, slots: list[object]) -> str:
         return f"Nao consegui identificar qual horario fica melhor para voce. {self.format_slots(slots)}"
 
@@ -156,3 +169,28 @@ class VoiceAgent:
         if date_time.minute:
             return f"{date_time.hour}h{date_time.minute:02d}"
         return f"{date_time.hour}h"
+
+    def _requested_slot_label(self, requested_hour: object, requested_weekday: object, requested_period: object) -> str:
+        parts = []
+        if requested_weekday:
+            parts.append(f"Na {self._weekday_from_context(str(requested_weekday))}")
+        if requested_hour is not None:
+            parts.append(f"as {requested_hour}h")
+        elif requested_period:
+            parts.append(f"no periodo da {requested_period}")
+
+        if not parts:
+            return "Esse horario"
+        return " ".join(parts).capitalize()
+
+    def _weekday_from_context(self, weekday: str) -> str:
+        labels = {
+            "segunda": "segunda-feira",
+            "terca": "terca-feira",
+            "quarta": "quarta-feira",
+            "quinta": "quinta-feira",
+            "sexta": "sexta-feira",
+            "sabado": "sabado",
+            "domingo": "domingo",
+        }
+        return labels.get(weekday, weekday)
