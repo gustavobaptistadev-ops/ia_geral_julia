@@ -1,68 +1,258 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 from app.application.action.service import ActionEngine
 from app.application.appointment.service import AppointmentService
 from app.application.conversation.service import ConversationEngine
 from app.application.decision.service import DecisionEngine
 from app.application.persistence.service import PersistenceService
+from app.application.safety.service import SafetyEngine
+from app.application.understanding.service import MessageUnderstandingEngine
 from app.domain.clinic.models import Clinic, Patient
 from app.domain.conversation.models import ConversationState, ConversationStep, ConversationStatus
 from app.domain.conversation.state_machine import ConversationStateMachine
 
 
 class ConversationOrchestrator:
-    def __init__(self) -> None:
+    def __init__(self, persistence_service: PersistenceService | None = None) -> None:
         self.state_machine = ConversationStateMachine()
         self.conversation_engine = ConversationEngine()
         self.decision_engine = DecisionEngine()
         self.appointment_service = AppointmentService()
-        self.persistence_service = PersistenceService()
+        self.persistence_service = persistence_service or PersistenceService()
+        self.safety_engine = SafetyEngine()
+        self.understanding_engine = MessageUnderstandingEngine()
         self.action_engine = ActionEngine()
 
-    def handle_message(self, message: str, state: ConversationState | None) -> dict[str, object]:
-        current_state = state or self.state_machine.start()
+    def handle_message(
+        self,
+        message: str,
+        state: ConversationState | None,
+        conversation_id: str | None = None,
+    ) -> dict[str, object]:
+        current_state = self._resolve_initial_state(state, conversation_id)
 
         if not message.strip():
-            next_state = current_state
+            reply = self.conversation_engine.generate_reply(current_state, message)
+            self.persistence_service.save_conversation_state(current_state)
+            return {"state": current_state, "reply": reply}
+
+        safety_decision = self.safety_engine.evaluate(message)
+        if safety_decision.should_interrupt:
+            next_state = self._build_safety_state(current_state, message, safety_decision.category, safety_decision.message)
             reply = self.conversation_engine.generate_reply(next_state, message)
+            self.persistence_service.save_conversation_state(next_state)
             return {"state": next_state, "reply": reply}
 
-        if self.decision_engine._is_appointment_intent(message.lower()):
-            patient = Patient(name="Paciente", phone="")
-            clinic = Clinic(name="Clínica", specialty="Geral")
-            appointment = self.appointment_service.create_appointment(patient, clinic, "2026-08-10 09:00")
-            if appointment is not None:
-                action_result = self.action_engine.book_appointment(
-                    appointment.scheduled_at.split(" ", 1)[0],
-                    appointment.scheduled_at.split(" ", 1)[1],
-                    "Consulta agendada",
-                    patient_name=appointment.patient_name,
-                    specialty=appointment.specialty,
-                )
-                current_state.context["appointment"] = {
-                    "patient_name": appointment.patient_name,
-                    "scheduled_at": appointment.scheduled_at,
-                    "specialty": appointment.specialty,
-                    "calendar_event": action_result.get("calendar_event"),
-                }
-                self.persistence_service.save_appointment(
-                    Patient(name="Paciente", phone=""),
-                    Clinic(name="Clínica", specialty="Geral"),
-                    appointment,
-                )
-
+        current_state = self._enrich_state_context(current_state, message)
         decision = self.decision_engine.decide(current_state, message)
 
-        if decision["next_step"] == ConversationStep.EMERGENCY:
-            next_state = ConversationState(
-                current_step=ConversationStep.EMERGENCY,
-                status=ConversationStatus.EMERGENCY,
-                context={**current_state.context, "last_message": message},
-                conversation_id=current_state.conversation_id,
-            )
-        else:
-            next_state = self.state_machine.process_message(current_state, message)
+        next_state = self._apply_decision(current_state, message, decision)
+
+        if next_state.current_step == ConversationStep.BOOK_APPOINTMENT and not next_state.context.get("appointment"):
+            next_state = self._confirm_appointment(next_state)
 
         reply = self.conversation_engine.generate_reply(next_state, message)
+        self.persistence_service.save_conversation_state(next_state)
 
         return {"state": next_state, "reply": reply}
+
+    def _apply_decision(
+        self,
+        state: ConversationState,
+        message: str,
+        decision: dict[str, object],
+    ) -> ConversationState:
+        next_step = decision["next_step"]
+        context = self.state_machine.append_message(state.context, message)
+
+        if next_step == ConversationStep.EMERGENCY:
+            return ConversationState(
+                current_step=ConversationStep.EMERGENCY,
+                status=ConversationStatus.EMERGENCY,
+                context={**context, "last_message": message},
+                conversation_id=state.conversation_id,
+            )
+
+        if next_step == ConversationStep.CHECK_CALENDAR:
+            return ConversationState(
+                current_step=ConversationStep.CHECK_CALENDAR,
+                status=state.status,
+                context={**context, "patient_details": message, "available_slots": self.state_machine.default_available_slots()},
+                conversation_id=state.conversation_id,
+            )
+
+        if next_step == ConversationStep.BOOK_APPOINTMENT:
+            selected_slot = self.state_machine.select_slot(message, context.get("available_slots", []))
+            if selected_slot is None:
+                return ConversationState(
+                    current_step=ConversationStep.CHECK_CALENDAR,
+                    status=state.status,
+                    context={**context, "calendar_selection_error": True},
+                    conversation_id=state.conversation_id,
+                )
+
+            return ConversationState(
+                current_step=ConversationStep.BOOK_APPOINTMENT,
+                status=state.status,
+                context={**context, "selected_slot": selected_slot},
+                conversation_id=state.conversation_id,
+            )
+
+        if next_step == ConversationStep.COLLECT_INFORMATION:
+            return ConversationState(
+                current_step=ConversationStep.COLLECT_INFORMATION,
+                status=state.status,
+                context={**context, "appointment_intent": True},
+                conversation_id=state.conversation_id,
+            )
+
+        if next_step == ConversationStep.CONFIRM_APPOINTMENT:
+            return ConversationState(
+                current_step=ConversationStep.CONFIRM_APPOINTMENT,
+                status=state.status,
+                context={**context, "reason": context.get("reason") or self._reason_from_context(context)},
+                conversation_id=state.conversation_id,
+            )
+
+        if next_step == ConversationStep.DISCOVER_SYMPTOMS:
+            return ConversationState(
+                current_step=ConversationStep.DISCOVER_SYMPTOMS,
+                status=state.status,
+                context={**context, "reason": context.get("reason") or self._reason_from_context(context) or message},
+                conversation_id=state.conversation_id,
+            )
+
+        return ConversationState(
+            current_step=state.current_step,
+            status=state.status,
+            context=context,
+            conversation_id=state.conversation_id,
+        )
+
+    def _reason_from_context(self, context: dict[str, object]) -> str | None:
+        summary = context.get("clinical_summary")
+        if isinstance(summary, dict) and summary.get("main_complaint"):
+            return str(summary["main_complaint"])
+
+        symptoms = context.get("symptoms")
+        if isinstance(symptoms, list) and symptoms:
+            return str(symptoms[0])
+        return None
+
+    def _enrich_state_context(self, state: ConversationState, message: str) -> ConversationState:
+        return ConversationState(
+            current_step=state.current_step,
+            status=state.status,
+            context=self.understanding_engine.enrich_context(state.context, message),
+            conversation_id=state.conversation_id,
+        )
+
+    def reset_conversations(self) -> dict[str, object]:
+        return self.persistence_service.reset_conversations()
+
+    def _ensure_conversation_id(
+        self,
+        state: ConversationState,
+        conversation_id: str | None,
+    ) -> ConversationState:
+        if state.conversation_id is not None:
+            return state
+
+        return ConversationState(
+            current_step=state.current_step,
+            status=state.status,
+            context=state.context,
+            conversation_id=conversation_id or str(uuid4()),
+        )
+
+    def _confirm_appointment(self, state: ConversationState) -> ConversationState:
+        patient = Patient(name=self._patient_name_from_context(state), phone="")
+        clinic = Clinic(name="Clinica", specialty="Geral")
+        selected_slot = str(state.context.get("selected_slot", "2026-08-10 09:00"))
+        appointment = self.appointment_service.create_appointment(patient, clinic, selected_slot)
+        if appointment is None:
+            return state
+
+        action_result = self.action_engine.book_appointment(
+            appointment.scheduled_at.split(" ", 1)[0],
+            appointment.scheduled_at.split(" ", 1)[1],
+            "Consulta agendada",
+            patient_name=appointment.patient_name,
+            specialty=appointment.specialty,
+        )
+        appointment_context = {
+            "patient_name": appointment.patient_name,
+            "scheduled_at": appointment.scheduled_at,
+            "specialty": appointment.specialty,
+            "calendar_event": action_result.get("calendar_event"),
+            "clinic_name": clinic.name,
+        }
+        self.persistence_service.save_appointment(
+            patient,
+            clinic,
+            appointment,
+            conversation_id=state.conversation_id,
+            context=appointment_context,
+        )
+        return ConversationState(
+            current_step=state.current_step,
+            status=state.status,
+            context={**state.context, "appointment": appointment_context},
+            conversation_id=state.conversation_id,
+        )
+
+    def _patient_name_from_context(self, state: ConversationState) -> str:
+        details = str(state.context.get("patient_details", "")).strip()
+        if not details:
+            return "Paciente"
+
+        first_part = details.split(",", 1)[0].strip()
+        return first_part or "Paciente"
+
+    def _resolve_initial_state(
+        self,
+        state: ConversationState | None,
+        conversation_id: str | None,
+    ) -> ConversationState:
+        if state is not None:
+            return self._ensure_conversation_id(state, conversation_id)
+
+        stored_state = self.persistence_service.load_conversation_state(conversation_id)
+        if stored_state is not None:
+            return stored_state
+
+        return self._ensure_conversation_id(self.state_machine.start(), conversation_id)
+
+    def _build_safety_state(
+        self,
+        state: ConversationState,
+        message: str,
+        category: str,
+        safety_message: str | None,
+    ) -> ConversationState:
+        if category == "emergency":
+            return ConversationState(
+                current_step=ConversationStep.EMERGENCY,
+                status=ConversationStatus.EMERGENCY,
+                context={
+                    **state.context,
+                    "last_message": message,
+                    "safety_category": category,
+                    "safety_message": safety_message,
+                },
+                conversation_id=state.conversation_id,
+            )
+
+        return ConversationState(
+            current_step=state.current_step,
+            status=state.status,
+            context={
+                **state.context,
+                "last_message": message,
+                "safety_category": category,
+                "safety_message": safety_message,
+            },
+            conversation_id=state.conversation_id,
+        )

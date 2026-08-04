@@ -10,7 +10,7 @@ def test_decision_engine_starts_with_greeting_step() -> None:
     decision = engine.decide(state, "")
 
     assert decision["next_step"] == ConversationStep.GREETING
-    assert decision["reason"] == "initial_greeting"
+    assert decision["reason"] == "greeting"
 
 
 def test_decision_engine_detects_emergency() -> None:
@@ -30,4 +30,60 @@ def test_decision_engine_detects_appointment_intent() -> None:
     decision = engine.decide(state, "Quero agendar uma consulta")
 
     assert decision["next_step"] == ConversationStep.DISCOVER_SYMPTOMS
-    assert decision["reason"] == "appointment_intent"
+    assert decision["reason"] == "appointment_intent_needs_context"
+
+
+def test_decision_engine_confirms_when_clinical_context_is_enough() -> None:
+    engine = DecisionEngine()
+    state = ConversationState(
+        current_step=ConversationStep.GREETING,
+        status=ConversationStatus.ACTIVE,
+        context={"clinical_summary": {"appointment_readiness": "enough_context", "main_complaint": "coceira"}},
+    )
+
+    decision = engine.decide(state, "estou com coceira nos dedos tem 3 dias e incomoda muito")
+
+    assert decision["next_step"] == ConversationStep.CONFIRM_APPOINTMENT
+    assert decision["reason"] == "enough_clinical_context"
+
+
+def test_decision_engine_moves_affirmative_confirmation_to_data_collection() -> None:
+    engine = DecisionEngine()
+    state = ConversationState(
+        current_step=ConversationStep.CONFIRM_APPOINTMENT,
+        status=ConversationStatus.ACTIVE,
+        context={"clinical_summary": {"appointment_readiness": "enough_context", "main_complaint": "coceira"}},
+    )
+
+    decision = engine.decide(state, "sim")
+
+    assert decision["next_step"] == ConversationStep.COLLECT_INFORMATION
+    assert decision["reason"] == "appointment_confirmed_by_patient"
+
+
+def test_decision_engine_moves_patient_contact_to_calendar_check() -> None:
+    engine = DecisionEngine()
+    state = ConversationState(
+        current_step=ConversationStep.COLLECT_INFORMATION,
+        status=ConversationStatus.ACTIVE,
+        context={},
+    )
+
+    decision = engine.decide(state, "Ana Silva 11999999999")
+
+    assert decision["next_step"] == ConversationStep.CHECK_CALENDAR
+    assert decision["reason"] == "patient_contact_collected"
+
+
+def test_decision_engine_treats_calendar_step_as_slot_selection() -> None:
+    engine = DecisionEngine()
+    state = ConversationState(
+        current_step=ConversationStep.CHECK_CALENDAR,
+        status=ConversationStatus.ACTIVE,
+        context={"available_slots": ["2026-08-10 09:00"]},
+    )
+
+    decision = engine.decide(state, "1")
+
+    assert decision["next_step"] == ConversationStep.BOOK_APPOINTMENT
+    assert decision["reason"] == "slot_selection"

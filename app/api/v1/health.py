@@ -1,10 +1,8 @@
-from fastapi import APIRouter, Depends
-
-from app.core.auth import require_api_key
+from fastapi import APIRouter
 
 router = APIRouter()
 
 
 @router.get("/health")
-async def health(_: None = Depends(require_api_key)) -> dict[str, str]:
+async def health() -> dict[str, str]:
     return {"status": "ok", "service": "lifelineone-ia"}

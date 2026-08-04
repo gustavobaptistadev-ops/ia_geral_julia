@@ -10,6 +10,7 @@ services:
       ENVIRONMENT: development
       DEBUG: "true"
       POSTGRES_URL: postgresql://postgres:postgres@postgres:5432/lifelineone
+      ENABLE_POSTGRES_PERSISTENCE: "true"
       REDIS_URL: redis://redis:6379/0
     depends_on:
       - postgres
@@ -23,7 +24,9 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: lifelineone
     ports:
-      - "5432:5432"
+      - "55432:5432"
+    volumes:
+      - ./app/infrastructure/database/001_initial_schema.sql:/docker-entrypoint-initdb.d/001_initial_schema.sql:ro
 
   redis:
     image: redis:7

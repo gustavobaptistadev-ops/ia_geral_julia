@@ -9,6 +9,7 @@ class Settings:
     environment: str = os.getenv("ENVIRONMENT", "development")
     debug: bool = os.getenv("DEBUG", "true").lower() == "true"
     postgres_url: str = os.getenv("POSTGRES_URL", "postgresql://postgres:postgres@localhost:5432/lifelineone")
+    enable_postgres_persistence: bool = os.getenv("ENABLE_POSTGRES_PERSISTENCE", "false").lower() == "true"
     redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     google_calendar_api_key: str | None = os.getenv("GOOGLE_CALENDAR_API_KEY")
     google_calendar_scope: str = os.getenv("GOOGLE_CALENDAR_SCOPE", "https://www.googleapis.com/auth/calendar")
