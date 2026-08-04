@@ -48,11 +48,7 @@ class ConversationEngine:
 
         if state.current_step == ConversationStep.COLLECT_INFORMATION:
             return {
-                "message": (
-                    "Otimo, vamos deixar tudo agendado. Pode me passar os seguintes dados por aqui, por favor?\n\n"
-                    "Nome completo\n\n"
-                    "WhatsApp/Telefone"
-                ),
+                "message": self._collect_information_message(state),
                 "next_step": ConversationStep.COLLECT_INFORMATION,
                 "should_handoff": False,
             }
@@ -83,6 +79,13 @@ class ConversationEngine:
                     "Chegue com alguns minutos de antecedencia e leve seus documentos. Vou te acompanhar por aqui se precisar ajustar algo."
                 ),
                 "next_step": ConversationStep.BOOK_APPOINTMENT,
+                "should_handoff": False,
+            }
+
+        if state.current_step == ConversationStep.FINISHED:
+            return {
+                "message": "Perfeito. Sua consulta ja esta confirmada. Qualquer ajuste, estou por aqui para te ajudar.",
+                "next_step": ConversationStep.FINISHED,
                 "should_handoff": False,
             }
 
@@ -125,6 +128,25 @@ class ConversationEngine:
             return f"Entendi sobre {main_complaint}. Isso esta leve, incomodando bastante ou piorando?"
 
         return f"Entendi sobre {main_complaint}. Quer que eu te ajude a organizar um atendimento para avaliar isso com seguranca?"
+
+    def _collect_information_message(self, state: ConversationState) -> str:
+        patient = state.context.get("patient")
+        missing_fields = state.context.get("missing_patient_fields", ["name", "phone"])
+        patient_name = patient.get("name") if isinstance(patient, dict) else None
+
+        if patient_name and isinstance(missing_fields, list) and "phone" in missing_fields:
+            return (
+                f"Perfeito, {patient_name}. Agora falta so o WhatsApp/Telefone para eu seguir com o agendamento."
+            )
+
+        if isinstance(missing_fields, list) and missing_fields == ["name"]:
+            return "Recebi o telefone. Agora me passe o nome completo, por favor."
+
+        return (
+            "Otimo, vamos deixar tudo agendado. Pode me passar os seguintes dados por aqui, por favor?\n\n"
+            "Nome completo\n\n"
+            "WhatsApp/Telefone"
+        )
 
     def _format_slots(self, slots: list[object]) -> str:
         if not slots:

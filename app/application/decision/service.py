@@ -17,6 +17,9 @@ class DecisionEngine:
         if state.status == ConversationStatus.EMERGENCY or self._is_emergency(normalized):
             return {"next_step": ConversationStep.EMERGENCY, "reason": "emergency"}
 
+        if state.status == ConversationStatus.APPOINTMENT_BOOKED or state.current_step == ConversationStep.BOOK_APPOINTMENT:
+            return {"next_step": ConversationStep.FINISHED, "reason": "appointment_already_booked"}
+
         if self._is_greeting(normalized) and not self._has_clinical_summary(context):
             return {"next_step": ConversationStep.GREETING, "reason": "greeting"}
 
@@ -24,7 +27,7 @@ class DecisionEngine:
             return {"next_step": ConversationStep.BOOK_APPOINTMENT, "reason": "slot_selection"}
 
         if state.current_step == ConversationStep.COLLECT_INFORMATION:
-            if self._has_patient_contact(message):
+            if self._has_patient_identity(context):
                 return {"next_step": ConversationStep.CHECK_CALENDAR, "reason": "patient_contact_collected"}
             return {"next_step": ConversationStep.COLLECT_INFORMATION, "reason": "missing_patient_contact"}
 
@@ -67,6 +70,14 @@ class DecisionEngine:
     def _has_patient_contact(self, message: str) -> bool:
         digits = [char for char in message if char.isdigit()]
         return bool(message.strip()) and len(digits) >= 8
+
+    def _has_patient_identity(self, context: dict[str, Any]) -> bool:
+        patient = context.get("patient")
+        return (
+            isinstance(patient, dict)
+            and bool(str(patient.get("name") or "").strip())
+            and bool(str(patient.get("phone") or "").strip())
+        )
 
     def _is_emergency(self, message: str) -> bool:
         emergency_keywords = [

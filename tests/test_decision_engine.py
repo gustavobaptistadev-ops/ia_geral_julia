@@ -66,13 +66,27 @@ def test_decision_engine_moves_patient_contact_to_calendar_check() -> None:
     state = ConversationState(
         current_step=ConversationStep.COLLECT_INFORMATION,
         status=ConversationStatus.ACTIVE,
-        context={},
+        context={"patient": {"name": "Ana Silva", "phone": "11999999999"}},
     )
 
     decision = engine.decide(state, "Ana Silva 11999999999")
 
     assert decision["next_step"] == ConversationStep.CHECK_CALENDAR
     assert decision["reason"] == "patient_contact_collected"
+
+
+def test_decision_engine_waits_when_patient_contact_is_partial() -> None:
+    engine = DecisionEngine()
+    state = ConversationState(
+        current_step=ConversationStep.COLLECT_INFORMATION,
+        status=ConversationStatus.ACTIVE,
+        context={"patient": {"name": "Gustavo Henrique"}, "missing_patient_fields": ["phone"]},
+    )
+
+    decision = engine.decide(state, "Gustavo Henrique")
+
+    assert decision["next_step"] == ConversationStep.COLLECT_INFORMATION
+    assert decision["reason"] == "missing_patient_contact"
 
 
 def test_decision_engine_treats_calendar_step_as_slot_selection() -> None:
@@ -87,3 +101,17 @@ def test_decision_engine_treats_calendar_step_as_slot_selection() -> None:
 
     assert decision["next_step"] == ConversationStep.BOOK_APPOINTMENT
     assert decision["reason"] == "slot_selection"
+
+
+def test_decision_engine_finishes_when_appointment_is_already_booked() -> None:
+    engine = DecisionEngine()
+    state = ConversationState(
+        current_step=ConversationStep.BOOK_APPOINTMENT,
+        status=ConversationStatus.APPOINTMENT_BOOKED,
+        context={"appointment": {"scheduled_at": "2026-08-10 14:00"}},
+    )
+
+    decision = engine.decide(state, "ok")
+
+    assert decision["next_step"] == ConversationStep.FINISHED
+    assert decision["reason"] == "appointment_already_booked"

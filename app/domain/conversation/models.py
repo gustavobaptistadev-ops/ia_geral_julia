@@ -8,6 +8,7 @@ from typing import Any
 class ConversationStatus(str, Enum):
     ACTIVE = "active"
     EMERGENCY = "emergency"
+    APPOINTMENT_BOOKED = "appointment_booked"
     FINISHED = "finished"
 
 

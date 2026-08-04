@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from uuid import uuid4
 
 from app.application.action.service import ActionEngine
@@ -46,6 +47,7 @@ class ConversationOrchestrator:
             return {"state": next_state, "reply": reply}
 
         current_state = self._enrich_state_context(current_state, message)
+        current_state = self._enrich_patient_context(current_state, message)
         decision = self.decision_engine.decide(current_state, message)
 
         next_state = self._apply_decision(current_state, message, decision)
@@ -79,7 +81,7 @@ class ConversationOrchestrator:
             return ConversationState(
                 current_step=ConversationStep.CHECK_CALENDAR,
                 status=state.status,
-                context={**context, "patient_details": message, "available_slots": self.state_machine.default_available_slots()},
+                context={**context, "available_slots": self.state_machine.default_available_slots()},
                 conversation_id=state.conversation_id,
             )
 
@@ -95,7 +97,7 @@ class ConversationOrchestrator:
 
             return ConversationState(
                 current_step=ConversationStep.BOOK_APPOINTMENT,
-                status=state.status,
+                status=ConversationStatus.APPOINTMENT_BOOKED,
                 context={**context, "selected_slot": selected_slot},
                 conversation_id=state.conversation_id,
             )
@@ -124,6 +126,14 @@ class ConversationOrchestrator:
                 conversation_id=state.conversation_id,
             )
 
+        if next_step == ConversationStep.FINISHED:
+            return ConversationState(
+                current_step=ConversationStep.FINISHED,
+                status=state.status,
+                context=context,
+                conversation_id=state.conversation_id,
+            )
+
         return ConversationState(
             current_step=state.current_step,
             status=state.status,
@@ -148,6 +158,45 @@ class ConversationOrchestrator:
             context=self.understanding_engine.enrich_context(state.context, message),
             conversation_id=state.conversation_id,
         )
+
+    def _enrich_patient_context(self, state: ConversationState, message: str) -> ConversationState:
+        if state.current_step != ConversationStep.COLLECT_INFORMATION:
+            return state
+
+        patient = dict(state.context.get("patient", {})) if isinstance(state.context.get("patient"), dict) else {}
+        name = self._extract_patient_name(message)
+        phone = self._extract_phone(message)
+
+        if name:
+            patient["name"] = name
+        if phone:
+            patient["phone"] = phone
+
+        missing = []
+        if not patient.get("name"):
+            missing.append("name")
+        if not patient.get("phone"):
+            missing.append("phone")
+
+        return ConversationState(
+            current_step=state.current_step,
+            status=state.status,
+            context={**state.context, "patient": patient, "missing_patient_fields": missing},
+            conversation_id=state.conversation_id,
+        )
+
+    def _extract_patient_name(self, message: str) -> str | None:
+        without_phone = re.sub(r"[\d\s()+-]{8,}", " ", message)
+        without_phone = without_phone.split(",", 1)[0]
+        without_phone = re.sub(r"\b(de manha|de tarde|de noite|manha|tarde|noite)\b", " ", without_phone, flags=re.IGNORECASE)
+        words = [word for word in without_phone.strip().split() if any(char.isalpha() for char in word)]
+        if len(words) < 2:
+            return None
+        return " ".join(words).strip(" ,.;")
+
+    def _extract_phone(self, message: str) -> str | None:
+        digits = "".join(char for char in message if char.isdigit())
+        return digits if len(digits) >= 8 else None
 
     def reset_conversations(self) -> dict[str, object]:
         return self.persistence_service.reset_conversations()
@@ -204,6 +253,10 @@ class ConversationOrchestrator:
         )
 
     def _patient_name_from_context(self, state: ConversationState) -> str:
+        patient = state.context.get("patient")
+        if isinstance(patient, dict) and patient.get("name"):
+            return str(patient["name"])
+
         details = str(state.context.get("patient_details", "")).strip()
         if not details:
             return "Paciente"
