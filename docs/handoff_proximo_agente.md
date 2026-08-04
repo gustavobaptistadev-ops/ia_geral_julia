@@ -1,55 +1,88 @@
-# Handoff para o próximo agente de IA
+# Handoff para o proximo agente de IA
 
 ## Estado atual do projeto
 
-O projeto já possui uma base arquitetural funcional em FastAPI, com módulos separados para domínio, aplicação, infraestrutura e API. O fluxo conversacional está orquestrado, o agendamento já é tratado por uma camada de aplicação e a estrutura de persistência com PostgreSQL foi iniciada.
+Projeto FastAPI da LifelineOne IA com foco na atendente Julia. A estrutura esta modularizada em dominio, aplicacao, infraestrutura e API. O fluxo principal ja consegue acolher sintomas, entender contexto basico, sugerir agendamento, coletar nome/telefone, apresentar horarios de forma natural, confirmar consulta e lidar com casos administrativos ou de emergencia.
 
-## O que já foi implementado
+## O que foi implementado ate aqui
 
-- Estrutura inicial do backend em FastAPI.
-- Endpoints de saúde e conversação.
-- Domínio para conversa, estado, clínica, paciente e agendamento.
-- Máquina de estados para o fluxo principal.
-- Conversation Engine com respostas iniciais e acolhimento.
-- Decision Engine para detectar emergência e intenção de agendamento.
-- Orquestrador de conversação integrado ao fluxo.
-- Action Engine inicial para agendamento.
-- Repositório inicial para persistência com PostgreSQL.
-- Configuração por ambiente e suporte a containers.
-- Testes automatizados cobrindo as principais camadas.
+- Backend FastAPI com endpoints de saude, login e conversas.
+- Persistencia em memoria e PostgreSQL.
+- Script local de chat com reset de conversas e indicador "Julia esta escrevendo...".
+- `ConversationContext` tipado para organizar contexto clinico, paciente, calendario e flags da conversa.
+- `MessageUnderstandingEngine` para extrair sintomas, duracao, gravidade, progressao, objetivo do paciente e prontidao para agendamento.
+- `DecisionEngine` para decidir a proxima etapa com base no contexto.
+- `ResponseAgent` como fachada de resposta.
+- `VoiceAgent` para centralizar tom de voz, mensagens por etapa e formatacao de horarios.
+- `AgendaAgent` para horarios, ordenacao e interpretacao natural de escolhas como "segunda", "de tarde" e "pode ser este mesmo".
+- `PatientAgent` para extrair nome, telefone e campos pendentes.
+- `AdministrativeAgent` para pedidos de exame, encaminhando para Laboratorio Life.
+- `AppointmentBookingAgent` para criar consulta, gerar evento e persistir agendamento.
+- `SafetyEngine` para urgencias e pedidos inseguros de medicacao/diagnostico.
+- Simulador de pacientes com relatorio Markdown em `scripts/simulate_patients.py`.
 
-## Arquitetura atual
+## Comandos uteis
 
-O projeto segue a direção proposta pelo produto:
+Rodar toda a suite:
 
-- Conversation Engine: responsável por gerar respostas humanas e orientadas ao objetivo do atendimento.
-- Decision Engine: responsável por decidir o próximo passo a partir do contexto.
-- Action Engine: responsável por executar ações, como agendamento e integrações futuras.
+```powershell
+Set-Location -LiteralPath 'D:\GUSTAVO\NOVOS PROJETOS\ia'; .\.venv\Scripts\python.exe -m pytest
+```
 
-## Próximo passo recomendado
+Abrir chat local com suite, PostgreSQL e reset:
 
-1. Integrar a persistência real com PostgreSQL e criar o esquema inicial de tabelas.
-2. Conectar o fluxo de agendamento à persistência, armazenando conversas, agendamentos e contexto.
-3. Implementar a camada de integração com Google Calendar e notificações.
-4. Evoluir para um modelo de configuração administrativa e fluxos configuráveis.
-5. Preparar o sistema para memória persistente, logs e observabilidade.
+```powershell
+Set-Location -LiteralPath 'D:\GUSTAVO\NOVOS PROJETOS\ia'; powershell -ExecutionPolicy Bypass -File .\scripts\start_chat.ps1
+```
 
-## Diretrizes para as próximas IAs
+Simular pacientes e gerar relatorio:
 
-- Nunca reescrever o projeto sem revisar o estado atual do repositório.
-- Sempre preservar a arquitetura modular e o conjunto de testes.
-- Não implementar regras de negócio diretamente no endpoint; elas devem entrar em camadas de aplicação ou domínio.
-- Manter foco em experiência humana, contexto, memória e condução ao agendamento.
-- Evitar lógica hardcoded para especialidades, clínicas ou fluxos específicos sem um modelo de configuração.
-- Continuar com desenvolvimento incremental, com testes para cada nova etapa.
+```powershell
+Set-Location -LiteralPath 'D:\GUSTAVO\NOVOS PROJETOS\ia'; powershell -ExecutionPolicy Bypass -File .\scripts\simulate_patients.ps1
+```
 
-## Pontos de atenção permanentes
+Relatorio local gerado:
 
-- O atendimento nunca deve parecer formulário ou chatbot.
-- A IA nunca deve emitir diagnóstico ou tratamento.
-- A conversa deve sempre responder primeiro e conduzir ao agendamento.
-- Emergências devem interromper o fluxo automaticamente e priorizar apoio humano.
+```text
+D:\GUSTAVO\NOVOS PROJETOS\ia\reports\ia_simulation_report.md
+```
 
-## Mensagem final para a próxima IA
+## Ultima validacao
 
-Continue evoluindo o projeto de forma incremental, respeitando o que já foi implementado e avançando para a persistência real e as integrações externas. O foco agora é transformar o fluxo conversacional em uma jornada operacional, com armazenamento confiável e execução concreta de agendamentos.
+- Suite completa: `123 passed, 30 warnings`.
+- Simulador: `6/6 cenarios sem achados`.
+
+## Arquitetura atual recomendada
+
+- `ConversationOrchestrator`: coordena o fluxo e delega responsabilidades.
+- `MessageUnderstandingEngine`: entende a mensagem e atualiza contexto.
+- `DecisionEngine`: decide a proxima etapa.
+- `VoiceAgent`: define como Julia fala.
+- `ResponseAgent`: monta payload de resposta usando o VoiceAgent.
+- `AgendaAgent`: interpreta e organiza horarios.
+- `PatientAgent`: extrai dados do paciente.
+- `AdministrativeAgent`: trata pedidos fora da consulta, como exames.
+- `AppointmentBookingAgent`: confirma e persiste consulta.
+- `SafetyEngine`: protege casos de risco.
+
+## Proximos passos recomendados
+
+1. Evoluir o `VoiceAgent` com frases mais humanas por etapa, mantendo testes exatos para cada ajuste aprovado.
+2. Criar ou fortalecer um `ContextAgent` para separar fatos confirmados, fatos inferidos, campos pendentes e nivel de confianca.
+3. Criar um `ClinicalTriageAgent` para concentrar regras de gravidade, tempo prolongado, piora e sinais de alerta.
+4. Adicionar um `HumanizationAgent` simples para revisar a resposta final antes de enviar, removendo repeticoes e melhorando naturalidade.
+5. Melhorar o simulador para exibir quais fatos foram usados na decisao da proxima pergunta.
+6. Depois de aprovar o tom, atualizar as mensagens para portugues com acentuacao correta de forma consistente.
+
+## Cuidados permanentes
+
+- Nao transformar o atendimento em menu, formulario ou fluxo engessado.
+- Nao perguntar de novo algo que ja foi informado pelo paciente.
+- Nao dar diagnostico, prescricao ou orientacao medica insegura.
+- Emergencias devem interromper o fluxo e orientar atendimento urgente.
+- Manter desenvolvimento incremental, com testes antes de cada commit.
+- Nao colocar regras novas diretamente no endpoint; usar agentes ou camadas de aplicacao.
+
+## Observacoes para o proximo agente
+
+O proximo refinamento mais seguro e mexer no `VoiceAgent`, porque agora ele concentra as frases e formatacoes. Para mudancas de inteligencia contextual, comece pelo `MessageUnderstandingEngine` e depois extraia um `ContextAgent`, sempre usando o simulador como rede de seguranca.
