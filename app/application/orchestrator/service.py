@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.application.appointment.service import AppointmentService
 from app.application.conversation.service import ConversationEngine
 from app.application.decision.service import DecisionEngine
+from app.application.persistence.service import PersistenceService
 from app.domain.clinic.models import Clinic, Patient
 from app.domain.conversation.models import ConversationState, ConversationStep, ConversationStatus
 from app.domain.conversation.state_machine import ConversationStateMachine
@@ -14,6 +15,7 @@ class ConversationOrchestrator:
         self.conversation_engine = ConversationEngine()
         self.decision_engine = DecisionEngine()
         self.appointment_service = AppointmentService()
+        self.persistence_service = PersistenceService()
 
     def handle_message(self, message: str, state: ConversationState | None) -> dict[str, object]:
         current_state = state or self.state_machine.start()
@@ -33,6 +35,11 @@ class ConversationOrchestrator:
                     "scheduled_at": appointment.scheduled_at,
                     "specialty": appointment.specialty,
                 }
+                self.persistence_service.save_appointment(
+                    Patient(name="Paciente", phone=""),
+                    Clinic(name="Clínica", specialty="Geral"),
+                    appointment,
+                )
 
         decision = self.decision_engine.decide(current_state, message)
 
