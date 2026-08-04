@@ -17,6 +17,15 @@ def test_safety_engine_detects_emergency() -> None:
     assert "emergencia" in decision.message
 
 
+def test_safety_engine_detects_puncture_injury_as_emergency() -> None:
+    decision = SafetyEngine().evaluate("tenho um prego no pe")
+
+    assert decision.category == "emergency"
+    assert decision.should_interrupt is True
+    assert decision.message is not None
+    assert "lesao perfurante" in decision.message
+
+
 def test_safety_engine_blocks_diagnosis_or_prescription_request() -> None:
     decision = SafetyEngine().evaluate("Qual remedio posso tomar e qual dosagem?")
 

@@ -15,6 +15,16 @@ class SafetyEngine:
     def evaluate(self, message: str) -> SafetyDecision:
         normalized = self._normalize(message)
 
+        if self._is_puncture_injury(normalized):
+            return SafetyDecision(
+                category="emergency",
+                should_interrupt=True,
+                message=(
+                    "Isso pode ser uma lesao perfurante e precisa de avaliacao medica com urgencia, especialmente pelo risco de infeccao. "
+                    "Procure um pronto atendimento hoje. Se houver sangramento intenso, dor forte, perda de sensibilidade ou dificuldade para andar, procure emergencia agora."
+                ),
+            )
+
         if self._is_emergency(normalized):
             return SafetyDecision(
                 category="emergency",
@@ -66,6 +76,17 @@ class SafetyEngine:
             "reacao alergica grave",
         ]
         return any(keyword in message for keyword in emergency_keywords)
+
+    def _is_puncture_injury(self, message: str) -> bool:
+        puncture_patterns = [
+            "prego no pe",
+            "pisei em prego",
+            "pisei num prego",
+            "furou o pe",
+            "furei o pe",
+            "objeto perfurou",
+        ]
+        return any(pattern in message for pattern in puncture_patterns)
 
     def _is_mental_health_risk(self, message: str) -> bool:
         mental_health_keywords = [

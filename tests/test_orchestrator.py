@@ -85,6 +85,15 @@ def test_orchestrator_detects_emergency() -> None:
     assert result["state"].status == "emergency"
 
 
+def test_orchestrator_interrupts_puncture_injury() -> None:
+    orchestrator = ConversationOrchestrator()
+    result = orchestrator.handle_message("tenho um prego no pe", None)
+
+    assert result["reply"]["next_step"] == "emergency"
+    assert result["reply"]["should_handoff"] is True
+    assert "lesao perfurante" in result["reply"]["message"]
+
+
 def test_orchestrator_detects_appointment_intent() -> None:
     orchestrator = ConversationOrchestrator()
     result = orchestrator.handle_message("Quero agendar uma consulta", None)
