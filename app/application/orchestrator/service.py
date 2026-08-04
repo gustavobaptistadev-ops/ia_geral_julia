@@ -3,16 +3,14 @@ from __future__ import annotations
 from unicodedata import combining, normalize
 from uuid import uuid4
 
-from app.application.action.service import ActionEngine
 from app.application.administrative import AdministrativeAgent
-from app.application.appointment.service import AppointmentService
+from app.application.booking import AppointmentBookingAgent
 from app.application.conversation.service import ConversationEngine
 from app.application.decision.service import DecisionEngine
 from app.application.patient import PatientAgent
 from app.application.persistence.service import PersistenceService
 from app.application.safety.service import SafetyEngine
 from app.application.understanding.service import MessageUnderstandingEngine
-from app.domain.clinic.models import Clinic, Patient
 from app.domain.conversation.context import ConversationContext
 from app.domain.conversation.models import ConversationState, ConversationStep, ConversationStatus
 from app.domain.conversation.state_machine import ConversationStateMachine
@@ -23,13 +21,12 @@ class ConversationOrchestrator:
         self.state_machine = ConversationStateMachine()
         self.conversation_engine = ConversationEngine()
         self.decision_engine = DecisionEngine()
-        self.appointment_service = AppointmentService()
         self.persistence_service = persistence_service or PersistenceService()
         self.safety_engine = SafetyEngine()
         self.understanding_engine = MessageUnderstandingEngine()
-        self.action_engine = ActionEngine()
         self.administrative_agent = AdministrativeAgent()
         self.patient_agent = PatientAgent()
+        self.booking_agent = AppointmentBookingAgent(persistence_service=self.persistence_service)
 
     def handle_message(
         self,
@@ -73,7 +70,7 @@ class ConversationOrchestrator:
         next_state = self._apply_decision(current_state, message, decision)
 
         if next_state.current_step == ConversationStep.BOOK_APPOINTMENT and not next_state.context.get("appointment"):
-            next_state = self._confirm_appointment(next_state)
+            next_state = self.booking_agent.confirm_appointment(next_state)
 
         reply = self.conversation_engine.generate_reply(next_state, message)
         self.persistence_service.save_conversation_state(next_state)
@@ -319,54 +316,6 @@ class ConversationOrchestrator:
             context=state.context,
             conversation_id=conversation_id or str(uuid4()),
         )
-
-    def _confirm_appointment(self, state: ConversationState) -> ConversationState:
-        patient = Patient(name=self._patient_name_from_context(state), phone="")
-        clinic = Clinic(name="Clinica", specialty="Geral")
-        selected_slot = str(state.context.get("selected_slot", "2026-08-10 09:00"))
-        appointment = self.appointment_service.create_appointment(patient, clinic, selected_slot)
-        if appointment is None:
-            return state
-
-        action_result = self.action_engine.book_appointment(
-            appointment.scheduled_at.split(" ", 1)[0],
-            appointment.scheduled_at.split(" ", 1)[1],
-            "Consulta agendada",
-            patient_name=appointment.patient_name,
-            specialty=appointment.specialty,
-        )
-        appointment_context = {
-            "patient_name": appointment.patient_name,
-            "scheduled_at": appointment.scheduled_at,
-            "specialty": appointment.specialty,
-            "calendar_event": action_result.get("calendar_event"),
-            "clinic_name": clinic.name,
-        }
-        self.persistence_service.save_appointment(
-            patient,
-            clinic,
-            appointment,
-            conversation_id=state.conversation_id,
-            context=appointment_context,
-        )
-        return ConversationState(
-            current_step=state.current_step,
-            status=state.status,
-            context={**state.context, "appointment": appointment_context},
-            conversation_id=state.conversation_id,
-        )
-
-    def _patient_name_from_context(self, state: ConversationState) -> str:
-        conversation_context = ConversationContext.from_dict(state.context)
-        if conversation_context.patient.name:
-            return conversation_context.patient.name
-
-        details = (conversation_context.patient_details or "").strip()
-        if not details:
-            return "Paciente"
-
-        first_part = details.split(",", 1)[0].strip()
-        return first_part or "Paciente"
 
     def _resolve_initial_state(
         self,
