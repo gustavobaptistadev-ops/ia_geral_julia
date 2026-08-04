@@ -102,6 +102,20 @@ def test_orchestrator_detects_appointment_intent() -> None:
     assert result["reply"]["message"] == "Certo, me conta qual sintoma ou motivo principal da consulta."
 
 
+def test_orchestrator_refers_exam_request_to_partner_laboratory() -> None:
+    orchestrator = ConversationOrchestrator()
+
+    result = orchestrator.handle_message("exame", None, conversation_id="conv-1")
+
+    assert result["reply"]["next_step"] == "greeting"
+    assert "LifelineOne realiza consultas" in result["reply"]["message"]
+    assert "Laboratorio Life" in result["reply"]["message"]
+    assert "61999999999" in result["reply"]["message"]
+    assert "Connect Tower" in result["reply"]["message"]
+    assert "Posso te auxiliar em algo mais?" in result["reply"]["message"]
+    assert result["state"].context["last_administrative_intent"] == "exam_referral"
+
+
 def test_orchestrator_does_not_book_before_slot_confirmation() -> None:
     orchestrator = ConversationOrchestrator()
     result = orchestrator.handle_message("Quero agendar uma consulta", None)
@@ -176,6 +190,19 @@ def test_orchestrator_uses_rich_single_message_context_before_suggesting_appoint
     assert "contexto" not in result["reply"]["message"].lower()
     assert summary["duration"] == "3 dias"
     assert summary["appointment_readiness"] == "enough_context"
+
+
+def test_orchestrator_responds_with_empathy_when_symptoms_are_worsening() -> None:
+    orchestrator = ConversationOrchestrator()
+
+    first = orchestrator.handle_message("alergia", None, conversation_id="conv-1")
+    second = orchestrator.handle_message("tem 3 dias e esta piorando", first["state"], conversation_id="conv-1")
+
+    assert second["reply"]["next_step"] == "confirm_appointment"
+    assert second["reply"]["message"].startswith("Poxa, sinto muito que esteja piorando.")
+    assert "desconforto" in second["reply"]["message"]
+    assert "que tal olharmos um horario na agenda" in second["reply"]["message"]
+    assert "Vamos agendar sua consulta?" not in second["reply"]["message"]
 
 
 def test_orchestrator_uses_mixed_hair_loss_message_before_asking_next_missing_detail() -> None:
@@ -313,6 +340,19 @@ def test_orchestrator_books_pending_slot_after_affirmative_confirmation() -> Non
     assert result["reply"]["next_step"] == "book_appointment"
     assert result["state"].context["appointment"]["scheduled_at"] == "2026-08-10 09:00"
     assert "Horario: segunda-feira, 10/08/2026 as 9h" in result["reply"]["message"]
+
+
+def test_orchestrator_understands_natural_affirmative_for_pending_slot() -> None:
+    orchestrator = ConversationOrchestrator()
+
+    first = orchestrator.handle_message("coceira tem 3 dias e incomoda muito", None, conversation_id="conv-1")
+    second = orchestrator.handle_message("sim", first["state"], conversation_id="conv-1")
+    third = orchestrator.handle_message("Ana Silva 11999999999", second["state"], conversation_id="conv-1")
+    fourth = orchestrator.handle_message("segunda", third["state"], conversation_id="conv-1")
+    result = orchestrator.handle_message("pode ser este mesmo", fourth["state"], conversation_id="conv-1")
+
+    assert result["reply"]["next_step"] == "book_appointment"
+    assert result["state"].context["appointment"]["scheduled_at"] == "2026-08-10 09:00"
 
 
 def test_orchestrator_reoffers_day_slots_after_negative_confirmation() -> None:

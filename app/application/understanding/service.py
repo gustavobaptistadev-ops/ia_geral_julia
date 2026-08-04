@@ -4,87 +4,58 @@ import re
 from typing import Any
 from unicodedata import combining, normalize
 
+from app.domain.conversation.context import ClinicalContext, ConversationContext
+
 
 class MessageUnderstandingEngine:
     def enrich_context(self, context: dict[str, Any], message: str) -> dict[str, Any]:
-        summary = self._default_summary(context.get("clinical_summary"))
+        conversation_context = ConversationContext.from_dict(context)
+        clinical = conversation_context.clinical
         normalized = self._normalize(message)
 
         patient_goal = self._extract_patient_goal(normalized)
         if patient_goal:
-            summary["patient_goal"] = patient_goal
+            clinical.patient_goal = patient_goal
 
         requested_specialty = self._extract_requested_specialty(normalized)
         if requested_specialty:
-            summary["requested_specialty"] = requested_specialty
+            clinical.requested_specialty = requested_specialty
 
         main_complaint = self._extract_main_complaint(message, normalized)
-        if main_complaint and summary.get("main_complaint") is None:
-            summary["main_complaint"] = main_complaint
+        if main_complaint and clinical.main_complaint is None:
+            clinical.main_complaint = main_complaint
 
         body_location = self._extract_body_location(normalized)
-        if body_location and summary.get("body_location") is None:
-            summary["body_location"] = body_location
+        if body_location and clinical.body_location is None:
+            clinical.body_location = body_location
 
         duration = self._extract_duration(message, normalized)
         if duration:
-            summary["duration"] = duration
+            clinical.duration = duration
             if self._is_long_duration(duration):
-                summary["duration_risk"] = "long_duration"
+                clinical.duration_risk = "long_duration"
 
         severity = self._extract_severity(normalized)
         if severity:
-            summary["severity"] = severity
+            clinical.severity = severity
 
         progression = self._extract_progression(normalized)
         if progression:
-            summary["progression"] = progression
+            clinical.progression = progression
 
-        summary["missing_fields"] = self._missing_fields(summary)
-        summary["appointment_readiness"] = (
-            "enough_context" if self._has_enough_context(summary) else "needs_more_context"
+        clinical.missing_fields = self._missing_fields(clinical)
+        clinical.appointment_readiness = (
+            "enough_context" if self._has_enough_context(clinical) else "needs_more_context"
         )
 
         symptoms = self._updated_symptoms(context, message, normalized, main_complaint)
-        context_memory = self._updated_context_memory(context, message, summary)
+        context_memory = self._updated_context_memory(context, message, clinical)
 
         return {
             **context,
-            "clinical_summary": summary,
+            "clinical_summary": clinical.to_dict(),
             "symptoms": symptoms,
             "context_memory": context_memory,
-        }
-
-    def _default_summary(self, current: object) -> dict[str, Any]:
-        if isinstance(current, dict):
-            return {
-                "main_complaint": current.get("main_complaint"),
-                "patient_goal": current.get("patient_goal"),
-                "requested_specialty": current.get("requested_specialty"),
-                "body_location": current.get("body_location"),
-                "duration": current.get("duration"),
-                "duration_risk": current.get("duration_risk"),
-                "severity": current.get("severity"),
-                "progression": current.get("progression"),
-                "associated_symptoms": list(current.get("associated_symptoms", [])),
-                "red_flags": list(current.get("red_flags", [])),
-                "missing_fields": list(current.get("missing_fields", [])),
-                "appointment_readiness": current.get("appointment_readiness", "unknown"),
-            }
-
-        return {
-            "main_complaint": None,
-            "patient_goal": None,
-            "requested_specialty": None,
-            "body_location": None,
-            "duration": None,
-            "duration_risk": None,
-            "severity": None,
-            "progression": None,
-            "associated_symptoms": [],
-            "red_flags": [],
-            "missing_fields": [],
-            "appointment_readiness": "unknown",
         }
 
     def _extract_patient_goal(self, normalized: str) -> str | None:
@@ -243,32 +214,33 @@ class MessageUnderstandingEngine:
             return "melhorando"
         return None
 
-    def _missing_fields(self, summary: dict[str, Any]) -> list[str]:
+    def _missing_fields(self, clinical: ClinicalContext) -> list[str]:
         missing = []
-        for field in ["main_complaint", "duration"]:
-            if not summary.get(field):
-                missing.append(field)
+        if not clinical.main_complaint:
+            missing.append("main_complaint")
+        if not clinical.duration:
+            missing.append("duration")
         if (
-            not summary.get("severity")
-            and not summary.get("progression")
-            and not self._has_clinically_significant_duration(summary)
+            not clinical.severity
+            and not clinical.progression
+            and not self._has_clinically_significant_duration(clinical)
         ):
             missing.append("severity_or_progression")
         return missing
 
-    def _has_enough_context(self, summary: dict[str, Any]) -> bool:
+    def _has_enough_context(self, clinical: ClinicalContext) -> bool:
         return (
-            bool(summary.get("main_complaint"))
-            and bool(summary.get("duration"))
+            bool(clinical.main_complaint)
+            and bool(clinical.duration)
             and (
-                bool(summary.get("severity"))
-                or bool(summary.get("progression"))
-                or self._has_clinically_significant_duration(summary)
+                bool(clinical.severity)
+                or bool(clinical.progression)
+                or self._has_clinically_significant_duration(clinical)
             )
         )
 
-    def _has_clinically_significant_duration(self, summary: dict[str, Any]) -> bool:
-        return summary.get("duration_risk") == "long_duration"
+    def _has_clinically_significant_duration(self, clinical: ClinicalContext) -> bool:
+        return clinical.duration_risk == "long_duration"
 
     def _is_long_duration(self, duration: str) -> bool:
         normalized = self._normalize(duration)
@@ -335,7 +307,7 @@ class MessageUnderstandingEngine:
         self,
         context: dict[str, Any],
         message: str,
-        summary: dict[str, Any],
+        clinical: ClinicalContext,
     ) -> dict[str, Any]:
         memory = dict(context.get("context_memory", {})) if isinstance(context.get("context_memory"), dict) else {}
         facts = list(memory.get("facts", [])) if isinstance(memory.get("facts"), list) else []
@@ -344,14 +316,14 @@ class MessageUnderstandingEngine:
             facts.append(patient_message)
 
         return {
-            "patient_goal": summary.get("patient_goal"),
-            "requested_specialty": summary.get("requested_specialty"),
-            "main_complaint": summary.get("main_complaint"),
-            "duration": summary.get("duration"),
-            "duration_risk": summary.get("duration_risk"),
-            "severity": summary.get("severity"),
-            "progression": summary.get("progression"),
-            "missing_fields": summary.get("missing_fields", []),
+            "patient_goal": clinical.patient_goal,
+            "requested_specialty": clinical.requested_specialty,
+            "main_complaint": clinical.main_complaint,
+            "duration": clinical.duration,
+            "duration_risk": clinical.duration_risk,
+            "severity": clinical.severity,
+            "progression": clinical.progression,
+            "missing_fields": clinical.missing_fields,
             "facts": facts[-10:],
         }
 

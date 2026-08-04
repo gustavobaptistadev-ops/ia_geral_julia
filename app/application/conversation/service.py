@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from app.domain.conversation.context import ConversationContext
 from app.domain.conversation.models import ConversationState, ConversationStep, ConversationStatus
 
 
@@ -40,10 +41,7 @@ class ConversationEngine:
 
         if state.current_step == ConversationStep.CONFIRM_APPOINTMENT:
             return {
-                "message": (
-                    "Pelo o que foi relatado, faz sentido organizar um atendimento para avaliar isso com seguranca. "
-                    "Vamos agendar sua consulta?"
-                ),
+                "message": self._confirm_appointment_message(state),
                 "next_step": ConversationStep.CONFIRM_APPOINTMENT,
                 "should_handoff": False,
             }
@@ -119,33 +117,44 @@ class ConversationEngine:
         }
 
     def _symptom_summary(self, state: ConversationState) -> str:
-        clinical_summary = state.context.get("clinical_summary")
-        if isinstance(clinical_summary, dict) and clinical_summary.get("main_complaint"):
-            parts = [str(clinical_summary["main_complaint"])]
-            if clinical_summary.get("duration"):
-                parts.append(f"ha {clinical_summary['duration']}")
-            if clinical_summary.get("progression"):
-                parts.append(str(clinical_summary["progression"]))
-            if clinical_summary.get("severity"):
-                parts.append(str(clinical_summary["severity"]))
+        context = ConversationContext.from_dict(state.context)
+        clinical = context.clinical
+        if clinical.main_complaint:
+            parts = [clinical.main_complaint]
+            if clinical.duration:
+                parts.append(f"ha {clinical.duration}")
+            if clinical.progression:
+                parts.append(clinical.progression)
+            if clinical.severity:
+                parts.append(clinical.severity)
             return ", ".join(parts)
 
-        symptoms = [str(symptom) for symptom in state.context.get("symptoms", [])]
-        return "; ".join(symptoms[-3:]) if symptoms else str(state.context.get("reason", "seu relato"))
+        return "; ".join(context.symptoms[-3:]) if context.symptoms else str(context.reason or "seu relato")
+
+    def _confirm_appointment_message(self, state: ConversationState) -> str:
+        context = ConversationContext.from_dict(state.context)
+        if context.clinical.is_worsening():
+            return (
+                "Poxa, sinto muito que esteja piorando. Imagino que isso esteja te trazendo desconforto.\n\n"
+                "Para a gente cuidar disso com mais seguranca e tentar resolver logo, "
+                "que tal olharmos um horario na agenda para voce passar por uma avaliacao?"
+            )
+
+        return (
+            "Pelo o que foi relatado, faz sentido organizar um atendimento para avaliar isso com seguranca. "
+            "Vamos agendar sua consulta?"
+        )
 
     def _discover_symptoms_message(self, state: ConversationState, message: str) -> str:
-        summary = state.context.get("clinical_summary")
-        if not isinstance(summary, dict):
-            return "Entendi. Me conta um pouco mais sobre o que voce esta sentindo?"
-
-        main_complaint = summary.get("main_complaint") or state.context.get("reason") or message
-        missing_fields = set(summary.get("missing_fields", []))
+        context = ConversationContext.from_dict(state.context)
+        clinical = context.clinical
+        main_complaint = clinical.main_complaint or context.reason or message
+        missing_fields = set(clinical.missing_fields)
         acknowledgement = self._acknowledgement(state)
 
-        if not summary.get("main_complaint"):
-            requested_specialty = summary.get("requested_specialty")
-            if requested_specialty:
-                return f"Certo, consigo te ajudar com {requested_specialty}. Qual sintoma ou motivo principal da consulta?"
+        if not clinical.main_complaint:
+            if clinical.requested_specialty:
+                return f"Certo, consigo te ajudar com {clinical.requested_specialty}. Qual sintoma ou motivo principal da consulta?"
             return "Certo, me conta qual sintoma ou motivo principal da consulta."
 
         if "duration" in missing_fields:
@@ -163,16 +172,16 @@ class ConversationEngine:
         return options[max(0, count - 1) % len(options)]
 
     def _collect_information_message(self, state: ConversationState) -> str:
-        patient = state.context.get("patient")
-        missing_fields = state.context.get("missing_patient_fields", ["name", "phone"])
-        patient_name = patient.get("name") if isinstance(patient, dict) else None
+        context = ConversationContext.from_dict(state.context)
+        missing_fields = context.missing_patient_fields or ["name", "phone"]
+        patient_name = context.patient.name
 
-        if patient_name and isinstance(missing_fields, list) and "phone" in missing_fields:
+        if patient_name and "phone" in missing_fields:
             return (
                 f"Perfeito, {patient_name}. Agora falta so o WhatsApp/Telefone para eu seguir com o agendamento."
             )
 
-        if isinstance(missing_fields, list) and missing_fields == ["name"]:
+        if missing_fields == ["name"]:
             return "Recebi o telefone. Agora me passe o nome completo, por favor."
 
         return (

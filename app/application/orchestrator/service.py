@@ -5,6 +5,7 @@ from unicodedata import combining, normalize
 from uuid import uuid4
 
 from app.application.action.service import ActionEngine
+from app.application.administrative import AdministrativeAgent
 from app.application.appointment.service import AppointmentService
 from app.application.conversation.service import ConversationEngine
 from app.application.decision.service import DecisionEngine
@@ -26,6 +27,7 @@ class ConversationOrchestrator:
         self.safety_engine = SafetyEngine()
         self.understanding_engine = MessageUnderstandingEngine()
         self.action_engine = ActionEngine()
+        self.administrative_agent = AdministrativeAgent()
 
     def handle_message(
         self,
@@ -44,6 +46,21 @@ class ConversationOrchestrator:
         if safety_decision.should_interrupt:
             next_state = self._build_safety_state(current_state, message, safety_decision.category, safety_decision.message)
             reply = self.conversation_engine.generate_reply(next_state, message)
+            self.persistence_service.save_conversation_state(next_state)
+            return {"state": next_state, "reply": reply}
+
+        administrative_response = self.administrative_agent.handle(message)
+        if administrative_response is not None:
+            next_state = self._build_administrative_state(
+                current_state,
+                message,
+                administrative_response.intent,
+            )
+            reply = {
+                "message": administrative_response.message,
+                "next_step": next_state.current_step,
+                "should_handoff": False,
+            }
             self.persistence_service.save_conversation_state(next_state)
             return {"state": next_state, "reply": reply}
 
@@ -210,7 +227,46 @@ class ConversationOrchestrator:
 
     def _is_affirmative(self, message: str) -> bool:
         normalized = self._normalize_text(message)
-        return normalized in {"sim", "pode", "pode sim", "pode confirmar", "confirmar", "confirmo", "isso", "isso mesmo", "ok", "certo"}
+        affirmative_phrases = {
+            "sim",
+            "pode",
+            "pode sim",
+            "pode ser",
+            "pode ser esse",
+            "pode ser este",
+            "pode ser essa",
+            "pode ser esta",
+            "pode ser isso",
+            "pode ser esse mesmo",
+            "pode ser este mesmo",
+            "pode ser essa mesmo",
+            "pode ser esta mesmo",
+            "pode confirmar",
+            "confirmar",
+            "confirmo",
+            "esse mesmo",
+            "este mesmo",
+            "essa mesmo",
+            "esta mesmo",
+            "isso",
+            "isso mesmo",
+            "ok",
+            "certo",
+        }
+        if normalized in affirmative_phrases:
+            return True
+
+        return any(
+            phrase in normalized
+            for phrase in [
+                "pode ser esse",
+                "pode ser este",
+                "esse mesmo",
+                "este mesmo",
+                "isso mesmo",
+                "pode confirmar",
+            ]
+        )
 
     def _is_negative(self, message: str) -> bool:
         normalized = self._normalize_text(message)
@@ -221,6 +277,15 @@ class ConversationOrchestrator:
             char for char in normalize("NFD", message.strip().lower()) if not combining(char)
         )
         return " ".join(without_accents.split())
+
+    def _build_administrative_state(self, state: ConversationState, message: str, intent: str) -> ConversationState:
+        context = self.state_machine.append_message(state.context, message)
+        return ConversationState(
+            current_step=state.current_step,
+            status=state.status,
+            context={**context, "last_administrative_intent": intent},
+            conversation_id=state.conversation_id,
+        )
 
     def _enrich_state_context(self, state: ConversationState, message: str) -> ConversationState:
         return ConversationState(
