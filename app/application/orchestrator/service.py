@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from unicodedata import combining, normalize
 from uuid import uuid4
 
@@ -9,10 +8,12 @@ from app.application.administrative import AdministrativeAgent
 from app.application.appointment.service import AppointmentService
 from app.application.conversation.service import ConversationEngine
 from app.application.decision.service import DecisionEngine
+from app.application.patient import PatientAgent
 from app.application.persistence.service import PersistenceService
 from app.application.safety.service import SafetyEngine
 from app.application.understanding.service import MessageUnderstandingEngine
 from app.domain.clinic.models import Clinic, Patient
+from app.domain.conversation.context import ConversationContext
 from app.domain.conversation.models import ConversationState, ConversationStep, ConversationStatus
 from app.domain.conversation.state_machine import ConversationStateMachine
 
@@ -28,6 +29,7 @@ class ConversationOrchestrator:
         self.understanding_engine = MessageUnderstandingEngine()
         self.action_engine = ActionEngine()
         self.administrative_agent = AdministrativeAgent()
+        self.patient_agent = PatientAgent()
 
     def handle_message(
         self,
@@ -198,14 +200,8 @@ class ConversationOrchestrator:
         )
 
     def _reason_from_context(self, context: dict[str, object]) -> str | None:
-        summary = context.get("clinical_summary")
-        if isinstance(summary, dict) and summary.get("main_complaint"):
-            return str(summary["main_complaint"])
-
-        symptoms = context.get("symptoms")
-        if isinstance(symptoms, list) and symptoms:
-            return str(symptoms[0])
-        return None
+        conversation_context = ConversationContext.from_dict(context)
+        return conversation_context.clinical.main_complaint or next(iter(conversation_context.symptoms), None)
 
     def _calendar_context(self, context: dict[str, object], **updates: object) -> dict[str, object]:
         next_context = {
@@ -299,40 +295,12 @@ class ConversationOrchestrator:
         if state.current_step != ConversationStep.COLLECT_INFORMATION:
             return state
 
-        patient = dict(state.context.get("patient", {})) if isinstance(state.context.get("patient"), dict) else {}
-        name = self._extract_patient_name(message)
-        phone = self._extract_phone(message)
-
-        if name:
-            patient["name"] = name
-        if phone:
-            patient["phone"] = phone
-
-        missing = []
-        if not patient.get("name"):
-            missing.append("name")
-        if not patient.get("phone"):
-            missing.append("phone")
-
         return ConversationState(
             current_step=state.current_step,
             status=state.status,
-            context={**state.context, "patient": patient, "missing_patient_fields": missing},
+            context=self.patient_agent.enrich_context(state.context, message),
             conversation_id=state.conversation_id,
         )
-
-    def _extract_patient_name(self, message: str) -> str | None:
-        without_phone = re.sub(r"[\d\s()+-]{8,}", " ", message)
-        without_phone = without_phone.split(",", 1)[0]
-        without_phone = re.sub(r"\b(de manha|de tarde|de noite|manha|tarde|noite)\b", " ", without_phone, flags=re.IGNORECASE)
-        words = [word for word in without_phone.strip().split() if any(char.isalpha() for char in word)]
-        if len(words) < 2:
-            return None
-        return " ".join(words).strip(" ,.;")
-
-    def _extract_phone(self, message: str) -> str | None:
-        digits = "".join(char for char in message if char.isdigit())
-        return digits if len(digits) >= 8 else None
 
     def reset_conversations(self) -> dict[str, object]:
         return self.persistence_service.reset_conversations()
@@ -389,11 +357,11 @@ class ConversationOrchestrator:
         )
 
     def _patient_name_from_context(self, state: ConversationState) -> str:
-        patient = state.context.get("patient")
-        if isinstance(patient, dict) and patient.get("name"):
-            return str(patient["name"])
+        conversation_context = ConversationContext.from_dict(state.context)
+        if conversation_context.patient.name:
+            return conversation_context.patient.name
 
-        details = str(state.context.get("patient_details", "")).strip()
+        details = (conversation_context.patient_details or "").strip()
         if not details:
             return "Paciente"
 
