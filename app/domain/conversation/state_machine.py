@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
+from unicodedata import combining, normalize
+
 from app.domain.conversation.models import (
     ConversationState,
     ConversationStatus,
@@ -115,11 +118,12 @@ class ConversationStateMachine:
         )
 
     def default_available_slots(self) -> list[str]:
-        return [
+        slots = [
             "2026-08-10 09:00",
             "2026-08-10 14:00",
             "2026-08-11 10:00",
         ]
+        return sorted(slots, key=self._slot_datetime)
 
     def append_message(self, context: dict[str, object], message: str) -> dict[str, object]:
         return self._append_message(context, message)
@@ -148,18 +152,79 @@ class ConversationStateMachine:
         if not isinstance(slots, list) or not slots:
             return None
 
-        normalized = message.strip().lower()
-        if normalized in {"1", "primeiro", "primeira", "opcao 1", "opção 1"}:
-            return str(slots[0])
-        if normalized in {"2", "segundo", "segunda", "opcao 2", "opção 2"} and len(slots) > 1:
-            return str(slots[1])
-        if normalized in {"3", "terceiro", "terceira", "opcao 3", "opção 3"} and len(slots) > 2:
-            return str(slots[2])
+        ordered_slots = sorted([str(slot) for slot in slots], key=self._slot_datetime)
+        normalized = self._normalize(message)
 
-        for slot in slots:
-            if str(slot) in message:
-                return str(slot)
+        for slot in ordered_slots:
+            if slot in message:
+                return slot
+
+        period = self._requested_period(normalized)
+        weekday = self._requested_weekday(normalized)
+        candidates = ordered_slots
+
+        if weekday is not None:
+            candidates = [slot for slot in candidates if self._weekday_name(slot) == weekday]
+        if period is not None:
+            candidates = [slot for slot in candidates if self._slot_period(slot) == period]
+        if candidates:
+            return candidates[0]
+
+        requested_hour = self._requested_hour(normalized)
+        if requested_hour is not None:
+            for slot in ordered_slots:
+                if self._slot_datetime(slot).hour == requested_hour:
+                    return slot
+
+        if normalized in {"1", "primeiro", "primeira"}:
+            return ordered_slots[0]
+        if normalized in {"2", "segundo"} and len(ordered_slots) > 1:
+            return ordered_slots[1]
+        if normalized in {"3", "terceiro", "terceira"} and len(ordered_slots) > 2:
+            return ordered_slots[2]
         return None
+
+    def _slot_datetime(self, slot: str) -> datetime:
+        return datetime.strptime(slot, "%Y-%m-%d %H:%M")
+
+    def _weekday_name(self, slot: str) -> str:
+        names = ["segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo"]
+        return names[self._slot_datetime(slot).weekday()]
+
+    def _slot_period(self, slot: str) -> str:
+        hour = self._slot_datetime(slot).hour
+        if hour < 12:
+            return "manha"
+        if hour < 18:
+            return "tarde"
+        return "noite"
+
+    def _requested_period(self, message: str) -> str | None:
+        if "manha" in message:
+            return "manha"
+        if "tarde" in message:
+            return "tarde"
+        if "noite" in message:
+            return "noite"
+        return None
+
+    def _requested_weekday(self, message: str) -> str | None:
+        weekdays = ["segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo"]
+        for weekday in weekdays:
+            if weekday in message:
+                return weekday
+        return None
+
+    def _requested_hour(self, message: str) -> int | None:
+        for hour in range(24):
+            if f"{hour}h" in message or f"{hour}:00" in message:
+                return hour
+        return None
+
+    def _normalize(self, message: str) -> str:
+        return "".join(
+            char for char in normalize("NFD", message.strip().lower()) if not combining(char)
+        )
 
     def _is_emergency(self, message: str) -> bool:
         emergency_keywords = [

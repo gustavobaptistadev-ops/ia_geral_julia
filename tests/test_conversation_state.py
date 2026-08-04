@@ -71,14 +71,27 @@ def test_state_machine_affirmative_confirmation_moves_to_collect_information() -
     assert next_state.context["symptoms"] == ["coceira nos dedos", "tem 3 dias e esta piorando"]
 
 
-def test_state_machine_selects_calendar_slot_before_booking() -> None:
+def test_state_machine_selects_calendar_slot_by_period_before_booking() -> None:
     machine = ConversationStateMachine()
     state = machine.process_message(machine.start(), "coceira nos dedos")
     state = machine.process_message(state, "incomodo nos dedos com essa coceira")
     state = machine.process_message(state, "quero marcar consulta")
     state = machine.process_message(state, "Ana Silva, 11999999999, de manha")
 
-    next_state = machine.process_message(state, "1")
+    next_state = machine.process_message(state, "pode ser de tarde")
+
+    assert next_state.current_step == ConversationStep.BOOK_APPOINTMENT
+    assert next_state.context["selected_slot"] == "2026-08-10 14:00"
+
+
+def test_state_machine_selects_calendar_slot_by_weekday_before_booking() -> None:
+    machine = ConversationStateMachine()
+    state = machine.process_message(machine.start(), "coceira nos dedos")
+    state = machine.process_message(state, "incomodo nos dedos com essa coceira")
+    state = machine.process_message(state, "quero marcar consulta")
+    state = machine.process_message(state, "Ana Silva, 11999999999, de manha")
+
+    next_state = machine.process_message(state, "prefiro segunda")
 
     assert next_state.current_step == ConversationStep.BOOK_APPOINTMENT
     assert next_state.context["selected_slot"] == "2026-08-10 09:00"

@@ -120,12 +120,13 @@ def test_orchestrator_persists_conversation_and_appointment_with_conversation_id
     second = orchestrator.handle_message("incomodo nos dedos com essa coceira", None, conversation_id="conv-1")
     third = orchestrator.handle_message("quero marcar consulta", second["state"], conversation_id="conv-1")
     fourth = orchestrator.handle_message("Ana Silva, 11999999999, de manha", third["state"], conversation_id="conv-1")
-    result = orchestrator.handle_message("1", fourth["state"], conversation_id="conv-1")
+    result = orchestrator.handle_message("prefiro segunda de manha", fourth["state"], conversation_id="conv-1")
 
     assert result["state"].conversation_id == "conv-1"
     assert first["state"].context["symptoms"] == ["coceira nos dedos"]
     assert repository.appointments[0]["conversation_id"] == "conv-1"
     assert repository.appointments[0]["patient_name"] == "Ana Silva"
+    assert repository.appointments[0]["scheduled_at"] == "2026-08-10 09:00"
 
 
 def test_orchestrator_restores_persisted_conversation_state() -> None:
@@ -203,7 +204,11 @@ def test_orchestrator_collects_data_and_offers_calendar_slots() -> None:
     assert "Nome completo" in third["reply"]["message"]
     assert "WhatsApp/Telefone" in third["reply"]["message"]
     assert fourth["reply"]["next_step"] == "check_calendar"
-    assert "1. 2026-08-10 09:00" in fourth["reply"]["message"]
+    assert "Escolha" not in fourth["reply"]["message"]
+    assert "1." not in fourth["reply"]["message"]
+    assert "Tenho vaga segunda-feira as 9h" in fourth["reply"]["message"]
+    assert "segunda-feira as 14h" in fourth["reply"]["message"]
+    assert "terca-feira as 10h" in fourth["reply"]["message"]
 
 
 def test_orchestrator_confirms_name_and_requests_only_missing_phone() -> None:
@@ -229,10 +234,10 @@ def test_orchestrator_confirms_after_slot_choice() -> None:
     second = orchestrator.handle_message("incomodo nos dedos com essa coceira", first["state"], conversation_id="conv-1")
     third = orchestrator.handle_message("quero marcar consulta", second["state"], conversation_id="conv-1")
     fourth = orchestrator.handle_message("Ana Silva, 11999999999, de manha", third["state"], conversation_id="conv-1")
-    result = orchestrator.handle_message("1", fourth["state"], conversation_id="conv-1")
+    result = orchestrator.handle_message("pode ser de tarde", fourth["state"], conversation_id="conv-1")
 
     assert result["reply"]["next_step"] == "book_appointment"
-    assert result["state"].context["appointment"]["scheduled_at"] == "2026-08-10 09:00"
+    assert result["state"].context["appointment"]["scheduled_at"] == "2026-08-10 14:00"
     assert "Av. Paulista" in result["reply"]["message"]
 
 
@@ -243,7 +248,7 @@ def test_orchestrator_keeps_appointment_finished_after_patient_acknowledges() ->
     second = orchestrator.handle_message("incomodo nos dedos com essa coceira", first["state"], conversation_id="conv-1")
     third = orchestrator.handle_message("sim", second["state"], conversation_id="conv-1")
     fourth = orchestrator.handle_message("gustavo henrique baptista santana 61991773474", third["state"], conversation_id="conv-1")
-    fifth = orchestrator.handle_message("2", fourth["state"], conversation_id="conv-1")
+    fifth = orchestrator.handle_message("prefiro segunda de tarde", fourth["state"], conversation_id="conv-1")
     result = orchestrator.handle_message("ok", fifth["state"], conversation_id="conv-1")
 
     assert result["reply"]["next_step"] == "finished"

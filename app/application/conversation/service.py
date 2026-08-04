@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from app.domain.conversation.models import ConversationState, ConversationStep, ConversationStatus
 
 
@@ -57,7 +59,7 @@ class ConversationEngine:
             slots = list(state.context.get("available_slots", []))
             if state.context.get("calendar_selection_error"):
                 return {
-                    "message": f"Nao consegui identificar qual horario voce escolheu. {self._format_slots(slots)}",
+                    "message": f"Nao consegui identificar qual horario fica melhor para voce. {self._format_slots(slots)}",
                     "next_step": ConversationStep.CHECK_CALENDAR,
                     "should_handoff": False,
                 }
@@ -152,5 +154,35 @@ class ConversationEngine:
         if not slots:
             return "No momento nao encontrei horarios livres; posso deixar para apoio humano verificar a agenda."
 
-        formatted = [f"{index}. {slot}" for index, slot in enumerate(slots, start=1)]
-        return "Escolha uma opcao respondendo 1, 2 ou 3: " + " | ".join(formatted)
+        ordered_slots = sorted([str(slot) for slot in slots], key=self._slot_datetime)
+        formatted_slots = [self._format_slot(slot) for slot in ordered_slots]
+        return f"Tenho vaga {self._join_naturally(formatted_slots)}. Qual desses horarios fica melhor para voce?"
+
+    def _format_slot(self, slot: str) -> str:
+        date_time = self._slot_datetime(slot)
+        hour = f"{date_time.hour}h"
+        if date_time.minute:
+            hour = f"{date_time.hour}h{date_time.minute:02d}"
+        return f"{self._weekday_label(date_time)} as {hour}"
+
+    def _join_naturally(self, items: list[str]) -> str:
+        if len(items) == 1:
+            return items[0]
+        if len(items) == 2:
+            return " ou ".join(items)
+        return ", ".join(items[:-1]) + " ou " + items[-1]
+
+    def _slot_datetime(self, slot: str) -> datetime:
+        return datetime.strptime(slot, "%Y-%m-%d %H:%M")
+
+    def _weekday_label(self, date_time: datetime) -> str:
+        labels = [
+            "segunda-feira",
+            "terca-feira",
+            "quarta-feira",
+            "quinta-feira",
+            "sexta-feira",
+            "sabado",
+            "domingo",
+        ]
+        return labels[date_time.weekday()]
