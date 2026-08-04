@@ -29,6 +29,8 @@ class MessageUnderstandingEngine:
         duration = self._extract_duration(message, normalized)
         if duration:
             summary["duration"] = duration
+            if self._is_long_duration(duration):
+                summary["duration_risk"] = "long_duration"
 
         severity = self._extract_severity(normalized)
         if severity:
@@ -61,6 +63,7 @@ class MessageUnderstandingEngine:
                 "requested_specialty": current.get("requested_specialty"),
                 "body_location": current.get("body_location"),
                 "duration": current.get("duration"),
+                "duration_risk": current.get("duration_risk"),
                 "severity": current.get("severity"),
                 "progression": current.get("progression"),
                 "associated_symptoms": list(current.get("associated_symptoms", [])),
@@ -75,6 +78,7 @@ class MessageUnderstandingEngine:
             "requested_specialty": None,
             "body_location": None,
             "duration": None,
+            "duration_risk": None,
             "severity": None,
             "progression": None,
             "associated_symptoms": [],
@@ -244,7 +248,11 @@ class MessageUnderstandingEngine:
         for field in ["main_complaint", "duration"]:
             if not summary.get(field):
                 missing.append(field)
-        if not summary.get("severity") and not summary.get("progression"):
+        if (
+            not summary.get("severity")
+            and not summary.get("progression")
+            and not self._has_clinically_significant_duration(summary)
+        ):
             missing.append("severity_or_progression")
         return missing
 
@@ -252,8 +260,27 @@ class MessageUnderstandingEngine:
         return (
             bool(summary.get("main_complaint"))
             and bool(summary.get("duration"))
-            and (bool(summary.get("severity")) or bool(summary.get("progression")))
+            and (
+                bool(summary.get("severity"))
+                or bool(summary.get("progression"))
+                or self._has_clinically_significant_duration(summary)
+            )
         )
+
+    def _has_clinically_significant_duration(self, summary: dict[str, Any]) -> bool:
+        return summary.get("duration_risk") == "long_duration"
+
+    def _is_long_duration(self, duration: str) -> bool:
+        normalized = self._normalize(duration)
+        month_match = re.search(r"\b(\d+)\s+(mes|meses)\b", normalized)
+        if month_match:
+            return int(month_match.group(1)) >= 1
+
+        week_match = re.search(r"\b(\d+)\s+(semana|semanas)\b", normalized)
+        if week_match:
+            return int(week_match.group(1)) >= 4
+
+        return any(term in normalized for term in ["alguns meses", "umas semanas", "algumas semanas"])
 
     def _updated_symptoms(
         self,
@@ -321,6 +348,7 @@ class MessageUnderstandingEngine:
             "requested_specialty": summary.get("requested_specialty"),
             "main_complaint": summary.get("main_complaint"),
             "duration": summary.get("duration"),
+            "duration_risk": summary.get("duration_risk"),
             "severity": summary.get("severity"),
             "progression": summary.get("progression"),
             "missing_fields": summary.get("missing_fields", []),

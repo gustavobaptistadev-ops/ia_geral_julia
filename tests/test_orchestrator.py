@@ -210,6 +210,20 @@ def test_orchestrator_uses_bare_vague_duration_before_asking_next_missing_detail
     assert summary["duration"] == "alguns dias"
 
 
+def test_orchestrator_recommends_appointment_when_symptom_has_months_duration() -> None:
+    orchestrator = ConversationOrchestrator()
+
+    first = orchestrator.handle_message("alergia", None, conversation_id="conv-1")
+    result = orchestrator.handle_message("uns 2 meses", first["state"], conversation_id="conv-1")
+
+    summary = result["state"].context["clinical_summary"]
+
+    assert result["reply"]["next_step"] == "confirm_appointment"
+    assert "Vamos agendar sua consulta?" in result["reply"]["message"]
+    assert "piorando" not in result["reply"]["message"]
+    assert summary["duration_risk"] == "long_duration"
+
+
 def test_orchestrator_understands_skin_blisters_as_clinical_context() -> None:
     orchestrator = ConversationOrchestrator()
 

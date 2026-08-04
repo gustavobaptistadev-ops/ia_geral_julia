@@ -49,8 +49,31 @@ def test_understanding_builds_context_memory_from_mixed_appointment_and_allergy_
     assert summary["requested_specialty"] == "alergista"
     assert summary["main_complaint"] == "alergia"
     assert summary["duration"] == "2 meses"
-    assert summary["missing_fields"] == ["severity_or_progression"]
+    assert summary["duration_risk"] == "long_duration"
+    assert summary["missing_fields"] == []
+    assert summary["appointment_readiness"] == "enough_context"
     assert memory["facts"] == ["quero agendar com alergista, estou 2 meses com alergia"]
+
+
+def test_understanding_treats_months_of_symptom_as_enough_context() -> None:
+    context = {
+        "clinical_summary": {
+            "main_complaint": "alergia",
+            "duration": None,
+            "severity": None,
+            "progression": None,
+        }
+    }
+
+    updated = MessageUnderstandingEngine().enrich_context(context, "uns 2 meses")
+
+    summary = updated["clinical_summary"]
+
+    assert summary["main_complaint"] == "alergia"
+    assert summary["duration"] == "2 meses"
+    assert summary["duration_risk"] == "long_duration"
+    assert summary["missing_fields"] == []
+    assert summary["appointment_readiness"] == "enough_context"
 
 
 def test_understanding_extracts_hair_loss_duration_and_appointment_intent() -> None:
