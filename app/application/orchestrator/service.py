@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.application.action.service import ActionEngine
 from app.application.appointment.service import AppointmentService
 from app.application.conversation.service import ConversationEngine
 from app.application.decision.service import DecisionEngine
@@ -16,6 +17,7 @@ class ConversationOrchestrator:
         self.decision_engine = DecisionEngine()
         self.appointment_service = AppointmentService()
         self.persistence_service = PersistenceService()
+        self.action_engine = ActionEngine()
 
     def handle_message(self, message: str, state: ConversationState | None) -> dict[str, object]:
         current_state = state or self.state_machine.start()
@@ -30,10 +32,18 @@ class ConversationOrchestrator:
             clinic = Clinic(name="Clínica", specialty="Geral")
             appointment = self.appointment_service.create_appointment(patient, clinic, "2026-08-10 09:00")
             if appointment is not None:
+                action_result = self.action_engine.book_appointment(
+                    appointment.scheduled_at.split(" ", 1)[0],
+                    appointment.scheduled_at.split(" ", 1)[1],
+                    "Consulta agendada",
+                    patient_name=appointment.patient_name,
+                    specialty=appointment.specialty,
+                )
                 current_state.context["appointment"] = {
                     "patient_name": appointment.patient_name,
                     "scheduled_at": appointment.scheduled_at,
                     "specialty": appointment.specialty,
+                    "calendar_event": action_result.get("calendar_event"),
                 }
                 self.persistence_service.save_appointment(
                     Patient(name="Paciente", phone=""),

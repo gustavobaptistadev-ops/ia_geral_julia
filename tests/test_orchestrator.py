@@ -24,3 +24,13 @@ def test_orchestrator_detects_appointment_intent() -> None:
 
     assert result["reply"]["next_step"] == "discover_symptoms"
     assert result["reply"]["message"].startswith("Entendi")
+
+
+def test_orchestrator_attaches_calendar_event_to_appointment_context() -> None:
+    orchestrator = ConversationOrchestrator()
+    result = orchestrator.handle_message("Quero agendar uma consulta", None)
+
+    appointment_context = result["state"].context.get("appointment", {})
+
+    assert appointment_context["calendar_event"]["summary"] == "Consulta Geral - Paciente"
+    assert appointment_context["calendar_event"]["start"] == "2026-08-10 09:00"
