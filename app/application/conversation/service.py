@@ -57,6 +57,25 @@ class ConversationEngine:
 
         if state.current_step == ConversationStep.CHECK_CALENDAR:
             slots = list(state.context.get("available_slots", []))
+            if state.context.get("slot_confirmation_required"):
+                pending_slot = state.context.get("pending_slot_confirmation")
+                return {
+                    "message": (
+                        "Tenho mais de um horario nesse dia. "
+                        f"Posso confirmar {self._format_confirmed_slot(pending_slot)}? "
+                        "Se preferir outro horario, pode me dizer qual."
+                    ),
+                    "next_step": ConversationStep.CHECK_CALENDAR,
+                    "should_handoff": False,
+                }
+
+            if state.context.get("slot_confirmation_declined"):
+                return {
+                    "message": f"Sem problema. {self._format_slots(slots)}",
+                    "next_step": ConversationStep.CHECK_CALENDAR,
+                    "should_handoff": False,
+                }
+
             if state.context.get("calendar_selection_error"):
                 return {
                     "message": f"Nao consegui identificar qual horario fica melhor para voce. {self._format_slots(slots)}",
@@ -76,9 +95,11 @@ class ConversationEngine:
         if state.current_step == ConversationStep.BOOK_APPOINTMENT:
             return {
                 "message": (
-                    f"Consulta confirmada para {state.context.get('selected_slot')}. "
-                    "Ficou tudo certo. A Clinica LifelineOne fica na Av. Paulista, 1000 - Sao Paulo, SP. "
-                    "Chegue com alguns minutos de antecedencia e leve seus documentos. Vou te acompanhar por aqui se precisar ajustar algo."
+                    "Perfeito, sua consulta esta confirmada.\n\n"
+                    f"Horario: {self._format_confirmed_slot(state.context.get('selected_slot'))}\n"
+                    "Endereco: Clinica LifelineOne, Av. Paulista, 1000 - Sao Paulo, SP.\n\n"
+                    "Chegue com alguns minutos de antecedencia e leve seus documentos. "
+                    "Vou te acompanhar por aqui se precisar ajustar algo."
                 ),
                 "next_step": ConversationStep.BOOK_APPOINTMENT,
                 "should_handoff": False,
@@ -119,6 +140,7 @@ class ConversationEngine:
 
         main_complaint = summary.get("main_complaint") or state.context.get("reason") or message
         missing_fields = set(summary.get("missing_fields", []))
+        acknowledgement = self._acknowledgement(state)
 
         if not summary.get("main_complaint"):
             requested_specialty = summary.get("requested_specialty")
@@ -127,12 +149,18 @@ class ConversationEngine:
             return "Certo, me conta qual sintoma ou motivo principal da consulta."
 
         if "duration" in missing_fields:
-            return "Entendi, ha quanto tempo isto esta ocorrendo?"
+            return f"{acknowledgement}, ha quanto tempo isto esta ocorrendo?"
 
         if "severity_or_progression" in missing_fields:
-            return f"Entendi sobre {main_complaint}. Isso esta leve, incomodando bastante ou piorando?"
+            return f"{acknowledgement}, isso esta leve, incomodando bastante ou piorando?"
 
         return f"Entendi sobre {main_complaint}. Quer que eu te ajude a organizar um atendimento para avaliar isso com seguranca?"
+
+    def _acknowledgement(self, state: ConversationState) -> str:
+        messages = state.context.get("messages", [])
+        count = len(messages) if isinstance(messages, list) else 0
+        options = ["Entendi", "Certo", "Obrigado por me contar", "Combinado"]
+        return options[max(0, count - 1) % len(options)]
 
     def _collect_information_message(self, state: ConversationState) -> str:
         patient = state.context.get("patient")
@@ -163,10 +191,7 @@ class ConversationEngine:
 
     def _format_slot(self, slot: str) -> str:
         date_time = self._slot_datetime(slot)
-        hour = f"{date_time.hour}h"
-        if date_time.minute:
-            hour = f"{date_time.hour}h{date_time.minute:02d}"
-        return f"{self._weekday_label(date_time)} as {hour}"
+        return f"{self._weekday_label(date_time)} as {self._format_hour(date_time)}"
 
     def _join_naturally(self, items: list[str]) -> str:
         if len(items) == 1:
@@ -177,6 +202,17 @@ class ConversationEngine:
 
     def _slot_datetime(self, slot: str) -> datetime:
         return datetime.strptime(slot, "%Y-%m-%d %H:%M")
+
+    def _format_confirmed_slot(self, slot: object) -> str:
+        if not slot:
+            return "horario combinado"
+
+        try:
+            date_time = self._slot_datetime(str(slot))
+        except ValueError:
+            return str(slot)
+
+        return f"{self._weekday_label(date_time)}, {date_time.strftime('%d/%m/%Y')} as {self._format_hour(date_time)}"
 
     def _weekday_label(self, date_time: datetime) -> str:
         labels = [
@@ -189,3 +225,8 @@ class ConversationEngine:
             "domingo",
         ]
         return labels[date_time.weekday()]
+
+    def _format_hour(self, date_time: datetime) -> str:
+        if date_time.minute:
+            return f"{date_time.hour}h{date_time.minute:02d}"
+        return f"{date_time.hour}h"

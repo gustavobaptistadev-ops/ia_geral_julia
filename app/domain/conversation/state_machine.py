@@ -131,6 +131,9 @@ class ConversationStateMachine:
     def select_slot(self, message: str, slots: object) -> str | None:
         return self._select_slot(message, slots)
 
+    def slot_candidates(self, message: str, slots: object) -> list[str]:
+        return self._slot_candidates(message, slots)
+
     def _append_message(self, context: dict[str, object], message: str) -> dict[str, object]:
         messages = list(context.get("messages", []))
         messages.append({"role": "patient", "content": message})
@@ -149,25 +152,18 @@ class ConversationStateMachine:
         return symptoms
 
     def _select_slot(self, message: str, slots: object) -> str | None:
-        if not isinstance(slots, list) or not slots:
+        ordered_slots = self._ordered_slots(slots)
+        if not ordered_slots:
             return None
 
-        ordered_slots = sorted([str(slot) for slot in slots], key=self._slot_datetime)
         normalized = self._normalize(message)
 
         for slot in ordered_slots:
             if slot in message:
                 return slot
 
-        period = self._requested_period(normalized)
-        weekday = self._requested_weekday(normalized)
-        candidates = ordered_slots
-
-        if weekday is not None:
-            candidates = [slot for slot in candidates if self._weekday_name(slot) == weekday]
-        if period is not None:
-            candidates = [slot for slot in candidates if self._slot_period(slot) == period]
-        if candidates:
+        candidates = self._slot_candidates(message, ordered_slots)
+        if len(candidates) == 1:
             return candidates[0]
 
         requested_hour = self._requested_hour(normalized)
@@ -183,6 +179,33 @@ class ConversationStateMachine:
         if normalized in {"3", "terceiro", "terceira"} and len(ordered_slots) > 2:
             return ordered_slots[2]
         return None
+
+    def _slot_candidates(self, message: str, slots: object) -> list[str]:
+        ordered_slots = self._ordered_slots(slots)
+        if not ordered_slots:
+            return []
+
+        normalized = self._normalize(message)
+        period = self._requested_period(normalized)
+        weekday = self._requested_weekday(normalized)
+        requested_hour = self._requested_hour(normalized)
+
+        candidates = ordered_slots
+        if weekday is not None:
+            candidates = [slot for slot in candidates if self._weekday_name(slot) == weekday]
+        if period is not None:
+            candidates = [slot for slot in candidates if self._slot_period(slot) == period]
+        if requested_hour is not None:
+            candidates = [slot for slot in candidates if self._slot_datetime(slot).hour == requested_hour]
+
+        if weekday is None and period is None and requested_hour is None:
+            return []
+        return candidates
+
+    def _ordered_slots(self, slots: object) -> list[str]:
+        if not isinstance(slots, list) or not slots:
+            return []
+        return sorted([str(slot) for slot in slots], key=self._slot_datetime)
 
     def _slot_datetime(self, slot: str) -> datetime:
         return datetime.strptime(slot, "%Y-%m-%d %H:%M")

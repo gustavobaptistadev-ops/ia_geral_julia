@@ -107,6 +107,10 @@ class MessageUnderstandingEngine:
             "alergia",
             "alergico",
             "alergica",
+            "cabelo",
+            "cabelos",
+            "queda",
+            "caindo",
             "coceira",
             "incomodo",
             "irritacao",
@@ -129,13 +133,25 @@ class MessageUnderstandingEngine:
 
         cleaned = self._clinical_clause(message, normalized, complaint_terms)
         cleaned = re.sub(
-            r"^\s*(eu\s+)?(estou com|to com|tou com|estou|to|tou|tenho|sinto|sentindo|com)\b",
+            r"^\s*(oi+|ola|olá|bom dia|boa tarde|boa noite)[,!.\s]*",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+        cleaned = re.sub(
+            r"^\s*(eu\s+)?(estou sentindo|to sentindo|tou sentindo|estou com|to com|tou com|estou|to|tou|tenho|sinto|sentindo|com)\b",
             "",
             cleaned,
             flags=re.IGNORECASE,
         ).strip()
         cleaned = re.sub(
             r"\b(quero|gostaria|preciso)\s+(de\s+)?(agendar|marcar)\s+(uma\s+)?consulta\b",
+            " ",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+        cleaned = re.sub(
+            r"\b(quero|gostaria|preciso)\s+(de\s+)?(agendar|marcar)\b.*$",
             " ",
             cleaned,
             flags=re.IGNORECASE,
@@ -149,6 +165,12 @@ class MessageUnderstandingEngine:
         )[0]
         cleaned = re.sub(
             r"\b\d+\s+(?:dias|dia|horas|hora|semanas|semana|meses|mes)\b",
+            " ",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+        cleaned = re.sub(
+            r"\b(?:a|ha|hÃ¡|tem|desde)\s+(?:alguns|algumas|uns|umas)\s+(?:dias|horas|semanas|meses)\b",
             " ",
             cleaned,
             flags=re.IGNORECASE,
@@ -183,6 +205,17 @@ class MessageUnderstandingEngine:
         simple_match = re.search(r"\b(\d+\s+(?:dias|dia|horas|hora|semanas|semana|meses|mes))\b", normalized)
         if simple_match:
             return simple_match.group(1)
+
+        vague_match = re.search(
+            r"\b(?:a|ha|hÃ¡|tem|desde)\s+(alguns|algumas|uns|umas)\s+(dias|horas|semanas|meses)\b",
+            normalized,
+        )
+        if vague_match:
+            return f"{vague_match.group(1)} {vague_match.group(2)}"
+
+        bare_vague_match = re.search(r"\b(alguns|algumas|uns|umas)\s+(dias|horas|semanas|meses)\b", normalized)
+        if bare_vague_match:
+            return f"{bare_vague_match.group(1)} {bare_vague_match.group(2)}"
 
         if "desde ontem" in normalized:
             return "desde ontem"
@@ -247,6 +280,10 @@ class MessageUnderstandingEngine:
             "alergia",
             "alergico",
             "alergica",
+            "cabelo",
+            "cabelos",
+            "queda",
+            "caindo",
             "coceira",
             "incomodo",
             "incomoda",

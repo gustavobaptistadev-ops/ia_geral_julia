@@ -84,14 +84,22 @@ def test_state_machine_selects_calendar_slot_by_period_before_booking() -> None:
     assert next_state.context["selected_slot"] == "2026-08-10 14:00"
 
 
-def test_state_machine_selects_calendar_slot_by_weekday_before_booking() -> None:
+def test_state_machine_selects_calendar_slot_by_weekday_and_period_before_booking() -> None:
     machine = ConversationStateMachine()
     state = machine.process_message(machine.start(), "coceira nos dedos")
     state = machine.process_message(state, "incomodo nos dedos com essa coceira")
     state = machine.process_message(state, "quero marcar consulta")
     state = machine.process_message(state, "Ana Silva, 11999999999, de manha")
 
-    next_state = machine.process_message(state, "prefiro segunda")
+    next_state = machine.process_message(state, "prefiro segunda de manha")
 
     assert next_state.current_step == ConversationStep.BOOK_APPOINTMENT
     assert next_state.context["selected_slot"] == "2026-08-10 09:00"
+
+
+def test_state_machine_returns_multiple_candidates_for_ambiguous_weekday() -> None:
+    machine = ConversationStateMachine()
+
+    candidates = machine.slot_candidates("segunda", machine.default_available_slots())
+
+    assert candidates == ["2026-08-10 09:00", "2026-08-10 14:00"]

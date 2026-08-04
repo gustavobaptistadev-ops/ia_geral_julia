@@ -51,3 +51,47 @@ def test_understanding_builds_context_memory_from_mixed_appointment_and_allergy_
     assert summary["duration"] == "2 meses"
     assert summary["missing_fields"] == ["severity_or_progression"]
     assert memory["facts"] == ["quero agendar com alergista, estou 2 meses com alergia"]
+
+
+def test_understanding_extracts_hair_loss_duration_and_appointment_intent() -> None:
+    context = MessageUnderstandingEngine().enrich_context(
+        {},
+        "estou com cabelo caindo a alguns dias quero marcar uma consulta",
+    )
+
+    summary = context["clinical_summary"]
+
+    assert summary["patient_goal"] == "schedule_appointment"
+    assert summary["main_complaint"] == "cabelo caindo"
+    assert summary["duration"] == "alguns dias"
+    assert summary["missing_fields"] == ["severity_or_progression"]
+
+
+def test_understanding_uses_bare_vague_duration_with_existing_complaint() -> None:
+    context = {
+        "clinical_summary": {
+            "main_complaint": "cabelo caindo",
+            "duration": None,
+            "severity": None,
+            "progression": None,
+        }
+    }
+
+    updated = MessageUnderstandingEngine().enrich_context(context, "alguns dias")
+
+    summary = updated["clinical_summary"]
+
+    assert summary["main_complaint"] == "cabelo caindo"
+    assert summary["duration"] == "alguns dias"
+    assert summary["missing_fields"] == ["severity_or_progression"]
+
+
+def test_understanding_removes_greeting_before_complaint() -> None:
+    context = MessageUnderstandingEngine().enrich_context(
+        {},
+        "oi estou sentindo cabelo caindo",
+    )
+
+    summary = context["clinical_summary"]
+
+    assert summary["main_complaint"] == "cabelo caindo"

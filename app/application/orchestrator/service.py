@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from unicodedata import combining, normalize
 from uuid import uuid4
 
 from app.application.action.service import ActionEngine
@@ -86,8 +87,46 @@ class ConversationOrchestrator:
             )
 
         if next_step == ConversationStep.BOOK_APPOINTMENT:
+            pending_slot = context.get("pending_slot_confirmation")
+            if pending_slot and self._is_affirmative(message):
+                selected_slot = str(pending_slot)
+                return ConversationState(
+                    current_step=ConversationStep.BOOK_APPOINTMENT,
+                    status=ConversationStatus.APPOINTMENT_BOOKED,
+                    context=self._booking_context(context, selected_slot),
+                    conversation_id=state.conversation_id,
+                )
+
+            if pending_slot and self._is_negative(message):
+                clarification_options = context.get("slot_clarification_options") or context.get("available_slots", [])
+                return ConversationState(
+                    current_step=ConversationStep.CHECK_CALENDAR,
+                    status=state.status,
+                    context=self._calendar_context(
+                        context,
+                        available_slots=clarification_options,
+                        slot_confirmation_declined=True,
+                    ),
+                    conversation_id=state.conversation_id,
+                )
+
             selected_slot = self.state_machine.select_slot(message, context.get("available_slots", []))
             if selected_slot is None:
+                candidates = self.state_machine.slot_candidates(message, context.get("available_slots", []))
+                if len(candidates) > 1:
+                    return ConversationState(
+                        current_step=ConversationStep.CHECK_CALENDAR,
+                        status=state.status,
+                        context=self._calendar_context(
+                            context,
+                            available_slots=context.get("available_slots", []),
+                            pending_slot_confirmation=candidates[0],
+                            slot_clarification_options=candidates,
+                            slot_confirmation_required=True,
+                        ),
+                        conversation_id=state.conversation_id,
+                    )
+
                 return ConversationState(
                     current_step=ConversationStep.CHECK_CALENDAR,
                     status=state.status,
@@ -98,7 +137,7 @@ class ConversationOrchestrator:
             return ConversationState(
                 current_step=ConversationStep.BOOK_APPOINTMENT,
                 status=ConversationStatus.APPOINTMENT_BOOKED,
-                context={**context, "selected_slot": selected_slot},
+                context=self._booking_context(context, selected_slot),
                 conversation_id=state.conversation_id,
             )
 
@@ -150,6 +189,38 @@ class ConversationOrchestrator:
         if isinstance(symptoms, list) and symptoms:
             return str(symptoms[0])
         return None
+
+    def _calendar_context(self, context: dict[str, object], **updates: object) -> dict[str, object]:
+        next_context = {
+            key: value
+            for key, value in context.items()
+            if key
+            not in {
+                "calendar_selection_error",
+                "pending_slot_confirmation",
+                "slot_clarification_options",
+                "slot_confirmation_required",
+                "slot_confirmation_declined",
+            }
+        }
+        return {**next_context, **updates}
+
+    def _booking_context(self, context: dict[str, object], selected_slot: str) -> dict[str, object]:
+        return self._calendar_context(context, selected_slot=selected_slot)
+
+    def _is_affirmative(self, message: str) -> bool:
+        normalized = self._normalize_text(message)
+        return normalized in {"sim", "pode", "pode sim", "pode confirmar", "confirmar", "confirmo", "isso", "isso mesmo", "ok", "certo"}
+
+    def _is_negative(self, message: str) -> bool:
+        normalized = self._normalize_text(message)
+        return normalized in {"nao", "nao pode", "prefiro outro", "outro horario", "nao quero", "melhor nao"}
+
+    def _normalize_text(self, message: str) -> str:
+        without_accents = "".join(
+            char for char in normalize("NFD", message.strip().lower()) if not combining(char)
+        )
+        return " ".join(without_accents.split())
 
     def _enrich_state_context(self, state: ConversationState, message: str) -> ConversationState:
         return ConversationState(

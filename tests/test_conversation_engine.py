@@ -66,3 +66,18 @@ def test_engine_asks_only_missing_duration_from_summary() -> None:
 
     assert response["message"] == "Entendi, ha quanto tempo isto esta ocorrendo?"
     assert "contexto" not in response["message"].lower()
+
+
+def test_engine_formats_confirmed_appointment_in_brazilian_date() -> None:
+    engine = ConversationEngine()
+    state = ConversationState(
+        current_step=ConversationStep.BOOK_APPOINTMENT,
+        status=ConversationStatus.APPOINTMENT_BOOKED,
+        context={"selected_slot": "2026-08-11 10:00"},
+    )
+
+    response = engine.generate_reply(state, "terca")
+
+    assert "Horario: terca-feira, 11/08/2026 as 10h" in response["message"]
+    assert "2026-08-11 10:00" not in response["message"]
+    assert "Endereco: Clinica LifelineOne, Av. Paulista, 1000 - Sao Paulo, SP." in response["message"]

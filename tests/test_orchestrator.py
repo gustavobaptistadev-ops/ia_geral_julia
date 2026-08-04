@@ -178,6 +178,38 @@ def test_orchestrator_uses_rich_single_message_context_before_suggesting_appoint
     assert summary["appointment_readiness"] == "enough_context"
 
 
+def test_orchestrator_uses_mixed_hair_loss_message_before_asking_next_missing_detail() -> None:
+    orchestrator = ConversationOrchestrator()
+
+    result = orchestrator.handle_message(
+        "estou com cabelo caindo a alguns dias quero marcar uma consulta",
+        None,
+        conversation_id="conv-1",
+    )
+
+    summary = result["state"].context["clinical_summary"]
+
+    assert result["reply"]["next_step"] == "discover_symptoms"
+    assert result["reply"]["message"] == "Entendi, isso esta leve, incomodando bastante ou piorando?"
+    assert summary["main_complaint"] == "cabelo caindo"
+    assert summary["duration"] == "alguns dias"
+    assert summary["patient_goal"] == "schedule_appointment"
+
+
+def test_orchestrator_uses_bare_vague_duration_before_asking_next_missing_detail() -> None:
+    orchestrator = ConversationOrchestrator()
+
+    first = orchestrator.handle_message("estou com cabelo caindo", None, conversation_id="conv-1")
+    result = orchestrator.handle_message("alguns dias", first["state"], conversation_id="conv-1")
+
+    summary = result["state"].context["clinical_summary"]
+
+    assert result["reply"]["next_step"] == "discover_symptoms"
+    assert result["reply"]["message"] == "Certo, isso esta leve, incomodando bastante ou piorando?"
+    assert summary["main_complaint"] == "cabelo caindo"
+    assert summary["duration"] == "alguns dias"
+
+
 def test_orchestrator_understands_skin_blisters_as_clinical_context() -> None:
     orchestrator = ConversationOrchestrator()
 
@@ -239,6 +271,50 @@ def test_orchestrator_confirms_after_slot_choice() -> None:
     assert result["reply"]["next_step"] == "book_appointment"
     assert result["state"].context["appointment"]["scheduled_at"] == "2026-08-10 14:00"
     assert "Av. Paulista" in result["reply"]["message"]
+
+
+def test_orchestrator_asks_confirmation_when_weekday_has_multiple_slots() -> None:
+    orchestrator = ConversationOrchestrator()
+
+    first = orchestrator.handle_message("coceira tem 3 dias e incomoda muito", None, conversation_id="conv-1")
+    second = orchestrator.handle_message("sim", first["state"], conversation_id="conv-1")
+    third = orchestrator.handle_message("Ana Silva 11999999999", second["state"], conversation_id="conv-1")
+    result = orchestrator.handle_message("segunda", third["state"], conversation_id="conv-1")
+
+    assert result["reply"]["next_step"] == "check_calendar"
+    assert result["state"].context["pending_slot_confirmation"] == "2026-08-10 09:00"
+    assert "Tenho mais de um horario nesse dia" in result["reply"]["message"]
+    assert "segunda-feira, 10/08/2026 as 9h" in result["reply"]["message"]
+
+
+def test_orchestrator_books_pending_slot_after_affirmative_confirmation() -> None:
+    orchestrator = ConversationOrchestrator()
+
+    first = orchestrator.handle_message("coceira tem 3 dias e incomoda muito", None, conversation_id="conv-1")
+    second = orchestrator.handle_message("sim", first["state"], conversation_id="conv-1")
+    third = orchestrator.handle_message("Ana Silva 11999999999", second["state"], conversation_id="conv-1")
+    fourth = orchestrator.handle_message("segunda", third["state"], conversation_id="conv-1")
+    result = orchestrator.handle_message("sim", fourth["state"], conversation_id="conv-1")
+
+    assert result["reply"]["next_step"] == "book_appointment"
+    assert result["state"].context["appointment"]["scheduled_at"] == "2026-08-10 09:00"
+    assert "Horario: segunda-feira, 10/08/2026 as 9h" in result["reply"]["message"]
+
+
+def test_orchestrator_reoffers_day_slots_after_negative_confirmation() -> None:
+    orchestrator = ConversationOrchestrator()
+
+    first = orchestrator.handle_message("coceira tem 3 dias e incomoda muito", None, conversation_id="conv-1")
+    second = orchestrator.handle_message("sim", first["state"], conversation_id="conv-1")
+    third = orchestrator.handle_message("Ana Silva 11999999999", second["state"], conversation_id="conv-1")
+    fourth = orchestrator.handle_message("segunda", third["state"], conversation_id="conv-1")
+    result = orchestrator.handle_message("nao", fourth["state"], conversation_id="conv-1")
+
+    assert result["reply"]["next_step"] == "check_calendar"
+    assert "Sem problema" in result["reply"]["message"]
+    assert "segunda-feira as 9h" in result["reply"]["message"]
+    assert "segunda-feira as 14h" in result["reply"]["message"]
+    assert "terca-feira" not in result["reply"]["message"]
 
 
 def test_orchestrator_keeps_appointment_finished_after_patient_acknowledges() -> None:
