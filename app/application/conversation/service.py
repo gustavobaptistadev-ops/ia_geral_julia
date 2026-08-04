@@ -121,7 +121,10 @@ class ConversationEngine:
         missing_fields = set(summary.get("missing_fields", []))
 
         if not summary.get("main_complaint"):
-            return "Entendi, ha quanto tempo isto esta ocorrendo?"
+            requested_specialty = summary.get("requested_specialty")
+            if requested_specialty:
+                return f"Certo, consigo te ajudar com {requested_specialty}. Qual sintoma ou motivo principal da consulta?"
+            return "Certo, me conta qual sintoma ou motivo principal da consulta."
 
         if "duration" in missing_fields:
             return "Entendi, ha quanto tempo isto esta ocorrendo?"

@@ -38,14 +38,14 @@ def test_engine_returns_safety_message_when_context_requires_handoff() -> None:
     assert response["should_handoff"] is True
 
 
-def test_engine_acknowledges_reason_and_requests_symptoms() -> None:
+def test_engine_requests_main_complaint_when_only_appointment_intent_exists() -> None:
     engine = ConversationEngine()
     machine = ConversationStateMachine()
-    state = machine.process_message(machine.start(), "Preciso agendar uma consulta para dor de cabeca")
+    state = machine.process_message(machine.start(), "Preciso agendar uma consulta")
 
-    response = engine.generate_reply(state, "Preciso agendar uma consulta para dor de cabeca")
+    response = engine.generate_reply(state, "Preciso agendar uma consulta")
 
-    assert response["message"] == "Entendi, ha quanto tempo isto esta ocorrendo?"
+    assert response["message"] == "Certo, me conta qual sintoma ou motivo principal da consulta."
     assert response["next_step"] == ConversationStep.DISCOVER_SYMPTOMS
 
 

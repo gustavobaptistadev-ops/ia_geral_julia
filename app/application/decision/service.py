@@ -38,7 +38,7 @@ class DecisionEngine:
                 return {"next_step": ConversationStep.DISCOVER_SYMPTOMS, "reason": "appointment_declined_by_patient"}
             return {"next_step": ConversationStep.CONFIRM_APPOINTMENT, "reason": "awaiting_appointment_confirmation"}
 
-        if self._has_enough_clinical_context(context) or self._has_accumulated_clinical_context(context):
+        if self._has_enough_clinical_context(context):
             return {"next_step": ConversationStep.CONFIRM_APPOINTMENT, "reason": "enough_clinical_context"}
 
         if self._is_appointment_intent(normalized):
@@ -62,10 +62,6 @@ class DecisionEngine:
     def _has_enough_clinical_context(self, context: dict[str, Any]) -> bool:
         summary = context.get("clinical_summary")
         return isinstance(summary, dict) and summary.get("appointment_readiness") == "enough_context"
-
-    def _has_accumulated_clinical_context(self, context: dict[str, Any]) -> bool:
-        symptoms = context.get("symptoms")
-        return isinstance(symptoms, list) and len(symptoms) >= 2
 
     def _has_patient_contact(self, message: str) -> bool:
         digits = [char for char in message if char.isdigit()]

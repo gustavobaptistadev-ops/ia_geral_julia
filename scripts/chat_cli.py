@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -20,6 +21,7 @@ from main import app
 
 
 client = TestClient(app)
+DEFAULT_TYPING_DELAY_SECONDS = 2.0
 
 
 def main() -> None:
@@ -55,6 +57,7 @@ def main() -> None:
         payload = response.json()
         conversation_id = payload["conversation_id"]
         reply = payload["reply"]
+        _show_typing_indicator()
         print(f"IA: {reply['message']}")
         print(f"Etapa: {reply['next_step']} | Handoff: {reply['should_handoff']} | ID: {conversation_id}")
 
@@ -71,6 +74,27 @@ def _reset_conversations(token: str) -> None:
     response = client.delete("/api/v1/conversations", headers={"Authorization": f"Bearer {token}"})
     if response.status_code not in {200, 403}:
         raise RuntimeError(f"Falha ao resetar conversas: {response.text}")
+
+
+def _show_typing_indicator() -> None:
+    if os.environ.get("CHAT_SHOW_TYPING", "true").lower() in {"false", "0", "no", "nao"}:
+        return
+
+    delay_seconds = _typing_delay_seconds()
+    print("Julia esta escrevendo...", flush=True)
+    if delay_seconds > 0:
+        time.sleep(delay_seconds)
+
+
+def _typing_delay_seconds() -> float:
+    raw_delay = os.environ.get("CHAT_TYPING_DELAY_SECONDS")
+    if raw_delay is None:
+        return DEFAULT_TYPING_DELAY_SECONDS
+
+    try:
+        return max(0.0, float(raw_delay.replace(",", ".")))
+    except ValueError:
+        return DEFAULT_TYPING_DELAY_SECONDS
 
 
 def _ensure_postgres_schema() -> None:

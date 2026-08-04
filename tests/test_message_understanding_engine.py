@@ -34,3 +34,20 @@ def test_understanding_preserves_existing_summary_and_fills_missing_fields() -> 
     assert summary["duration"] == "3 dias"
     assert summary["progression"] == "piorando"
     assert summary["appointment_readiness"] == "enough_context"
+
+
+def test_understanding_builds_context_memory_from_mixed_appointment_and_allergy_message() -> None:
+    context = MessageUnderstandingEngine().enrich_context(
+        {},
+        "quero agendar com alergista, estou 2 meses com alergia",
+    )
+
+    summary = context["clinical_summary"]
+    memory = context["context_memory"]
+
+    assert summary["patient_goal"] == "schedule_appointment"
+    assert summary["requested_specialty"] == "alergista"
+    assert summary["main_complaint"] == "alergia"
+    assert summary["duration"] == "2 meses"
+    assert summary["missing_fields"] == ["severity_or_progression"]
+    assert memory["facts"] == ["quero agendar com alergista, estou 2 meses com alergia"]
