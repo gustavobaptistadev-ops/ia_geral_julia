@@ -17,9 +17,17 @@ function Invoke-Step {
     }
 }
 
+function Test-DockerReady {
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    docker info > $null 2>&1
+    $exitCode = $LASTEXITCODE
+    $ErrorActionPreference = $previousErrorActionPreference
+    return $exitCode -eq 0
+}
+
 function Start-DockerIfNeeded {
-    docker info *> $null
-    if ($LASTEXITCODE -eq 0) {
+    if (Test-DockerReady) {
         return
     }
 
@@ -33,8 +41,7 @@ function Start-DockerIfNeeded {
 
     for ($attempt = 1; $attempt -le 60; $attempt++) {
         Start-Sleep -Seconds 2
-        docker info *> $null
-        if ($LASTEXITCODE -eq 0) {
+        if (Test-DockerReady) {
             Write-Host "Docker pronto."
             return
         }
