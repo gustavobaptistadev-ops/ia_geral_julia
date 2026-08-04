@@ -2,7 +2,7 @@ from fastapi import Depends, FastAPI, HTTPException, status
 from pydantic import BaseModel
 
 from app.api.v1 import conversations_router, health_router
-from app.core.auth import create_access_token, require_api_key
+from app.core.auth import create_access_token, create_refresh_token, decode_token, require_api_key, user_store
 from app.core.config import settings
 from app.core.logging import logger
 
@@ -17,13 +17,33 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
 @app.post("/login")
 async def login(request: LoginRequest) -> dict[str, str]:
-    if request.username != "admin" or request.password != "admin":
+    user = user_store.authenticate(request.username, request.password)
+    if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
-    token = create_access_token(request.username)
-    return {"access_token": token, "token_type": "bearer"}
+    access_token = create_access_token(request.username)
+    refresh_token = create_refresh_token(request.username)
+    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+
+
+@app.post("/refresh")
+async def refresh(request: RefreshRequest) -> dict[str, str]:
+    try:
+        payload = decode_token(request.refresh_token)
+    except HTTPException as exc:
+        raise exc
+
+    if payload.get("type") != "refresh":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+
+    access_token = create_access_token(payload["sub"])
+    return {"access_token": access_token, "token_type": "bearer"}
 
 
 @app.get("/")
